@@ -1,38 +1,34 @@
 class AppConstants {
-  static const String baseUrl = 'https://tteaqwe3g9.ap-southeast-1.awsapprunner.com'; // Thay thế nếu URL của bạn khác
-  static const String apiPrefix = '/api/v1';
-  static const String currentUserId = '2'; // Hardcoded User ID
+  // Thay URL Ngrok mới nhất của bạn vào đây (nhớ bỏ dấu / ở cuối)
+  static const String baseUrl = 'http://localhost:5000/api';
+  
+  static const String tokenKey = 'USER_TOKEN';
+  static const String userIdKey = 'USER_ID';
+  static const String userNameKey = 'USER_NAME';
+  static const String userEmailKey = 'USER_EMAIL';
 
-  // Helper để tạo URL đầy đủ cho hình ảnh
+  // Hàm xử lý ảnh thông minh (Hỗ trợ cả Asset local và Ảnh từ Server)
   static String getFullImageUrl(String? relativePath) {
     if (relativePath == null || relativePath.isEmpty) {
-      return 'https://via.placeholder.com/150/CCCCCC/FFFFFF?Text=NoImage'; // Ảnh mặc định
+      return 'https://cdn2.cellphones.com.vn/insecure/rs:fill:358:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/g/r/group_744_1_57.png'; // Đảm bảo bạn có ảnh này trong assets
     }
-    // Kiểm tra xem relativePath đã có http chưa (một số API có thể trả về URL đầy đủ)
-    if (relativePath.startsWith('http://') || relativePath.startsWith('https://')) {
+    
+    // 1. Nếu là đường dẫn Local Asset (như bạn đã lưu trong DB)
+    if (relativePath.startsWith('assets/')) {
       return relativePath;
     }
-    return '$baseUrl/$relativePath';
-  }
 
-  // Mapping trạng thái đơn hàng từ tiếng Việt sang API
-  static String? mapOrderStatusToApi(String vietnameseStatus) {
-    switch (vietnameseStatus) {
-      case 'Tất cả':
-        return null; // Hoặc không truyền param status
-      case 'Chờ xác nhận':
-        return 'Pending';
-      case 'Đã xác nhận':
-        return 'Confirmed';
-      case 'Đang vận chuyển':
-        return 'Shipping';
-      case 'Đã giao hàng':
-        return 'Completed';
-      case 'Đã huỷ':
-        return 'Cancelled';
-    // Thêm 'Returned' nếu cần
-      default:
-        return null;
+    // 2. Nếu là URL mạng (http...)
+    if (relativePath.startsWith('http')) {
+      return relativePath;
     }
+    
+    // 3. Nếu là đường dẫn từ Server Backend
+    String path = relativePath.replaceAll('\\', '/');
+    if (!path.startsWith('/')) path = '/$path';
+    
+    // Lấy domain gốc từ baseUrl (bỏ /api)
+    String serverRoot = baseUrl.replaceAll('/api', '');
+    return '$serverRoot$path';
   }
 }

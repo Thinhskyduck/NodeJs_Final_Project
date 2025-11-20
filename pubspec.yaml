@@ -51,6 +51,11 @@ dev_dependencies:
   flutter_lints: ^5.0.0
 
 flutter:
-  assets:
-    - assets/
   uses-material-design: true
+  assets:
+    - assets/img/
+    - assets/img/brand/
+    - assets/img/category/
+    - assets/img/product_img/
+    - assets/img/product_thumnail/
+    - assets/img/product_variant/

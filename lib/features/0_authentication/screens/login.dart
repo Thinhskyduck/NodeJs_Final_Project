@@ -1,13 +1,10 @@
 import 'dart:async';
-import 'dart:convert'; // Cho utf8, jsonEncode, jsonDecode
-import 'dart:io'; // For SocketException
-
-import 'reset_password.dart'; // Giữ đường dẫn thực tế của bạn
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:cross_platform_mobile_app_development/features/1_home/screens/home_screen.dart'; // Giữ đường dẫn thực tế của bạn
+import 'package:flutter/material.dart';
+
+import '../../../data/services/api_service.dart'; // Import Service mới
+import 'reset_password.dart'; // Giữ đường dẫn thực tế của bạn
 import 'signup.dart'; // Giữ đường dẫn thực tế của bạn
 
 class Login extends StatefulWidget {
@@ -24,14 +21,12 @@ class _LoginState extends State<Login> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  // Firebase API Key (Web API Key for your Firebase project)
-  final String FIREBASE_API_KEY = "AIzaSyBrt45E927d_oAoVqUx1t_SW51wZGcnm48"; // Giữ API Key của bạn
 
   Future<void> _signIn() async {
+    // 1. Validate cơ bản
     if (_emailController.text.trim().isEmpty || _passwordController.text.trim().isEmpty) {
       setState(() {
-        _errorMessage = 'Vui lòng nhập email và mật khẩu.';
-        _isLoading = false; // Đảm bảo reset isLoading
+        _errorMessage = 'Vui lòng nhập đầy đủ thông tin.';
       });
       return;
     }
@@ -42,194 +37,33 @@ class _LoginState extends State<Login> {
     });
 
     try {
-      // 1. Gửi request đến Firebase Authentication
-      final firebaseAuthUrl = Uri.parse(
-          "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$FIREBASE_API_KEY");
-      final firebasePayload = {
-        "email": _emailController.text.trim(),
-        "password": _passwordController.text.trim(),
-        "returnSecureToken": true,
-      };
+      // 2. Gọi API
+      final apiService = ApiService();
+      final user = await apiService.login(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+      );
 
-      final firebaseResponse = await http.post(
-        firebaseAuthUrl,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(firebasePayload),
-      ).timeout(const Duration(seconds: 15));
-
-      // Sử dụng utf8.decode cho Firebase response để đảm bảo (mặc dù thường không cần)
-      final decodedFirebaseBody = utf8.decode(firebaseResponse.bodyBytes);
-      final firebaseResult = jsonDecode(decodedFirebaseBody);
-      print("Firebase Response: $firebaseResult");
-      print("Firebase Status Code: ${firebaseResponse.statusCode}");
-
-      if (firebaseResponse.statusCode == 200 && firebaseResult['idToken'] != null) {
-        String? firebaseUserId = firebaseResult['localId'] as String?;
-        print("Firebase UID: $firebaseUserId");
-
-        if (firebaseUserId == null) {
-          setState(() { // setState này sẽ được bao trong try-finally
-            _errorMessage = 'Không thể lấy user_id từ Firebase.';
-          });
-          return; // Dừng sớm, isLoading sẽ được reset bởi finally
-        }
-
-        // 2. Gọi API Backend để xác thực với firebase_uid
-        final apiUrl = Uri.parse('https://tteaqwe3g9.ap-southeast-1.awsapprunner.com/api/v1/auth/login-success');
-
-        final apiResponse = await http.post(
-          apiUrl,
-          headers: {
-            'accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode({
-            "firebase_uid": firebaseUserId,
-          }),
-        ).timeout(const Duration(seconds: 10));
-
-        // LUÔN DECODE PHẢN HỒI TỪ API BACKEND BẰNG UTF-8
-        final decodedApiResponseBody = utf8.decode(apiResponse.bodyBytes);
-        print("Backend API Response Status: ${apiResponse.statusCode}");
-        print("Backend API Response Body (decoded): $decodedApiResponseBody");
-
-        if (apiResponse.statusCode == 200) {
-          final userData = jsonDecode(decodedApiResponseBody);
-          print("Backend User Data (parsed): $userData");
-
-          bool? isActive = userData['is_active'] as bool?;
-          if (isActive == null || !isActive) {
-            // Không cần setState cho isLoading ở đây, finally sẽ xử lý
-            if (!mounted) return;
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Tài khoản bị vô hiệu hóa'),
-                content: const Text('Tài khoản của bạn chưa được kích hoạt hoặc đã bị vô hiệu hóa. Vui lòng liên hệ hỗ trợ.'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('OK'),
-                  ),
-                ],
-              ),
-            );
-            return; // Dừng lại nếu tài khoản không active
-          }
-
-          if (userData['email'] == null || userData['full_name'] == null || userData['user_id'] == null) {
-            setState(() { // setState này sẽ được bao trong try-finally
-              _errorMessage = 'Dữ liệu người dùng từ server không đầy đủ.';
-            });
-            return; // Dừng sớm
-          }
-
-          try {
-            final dynamic backendUserIdRaw = userData['user_id'];
-            final String fullName = userData['full_name'] as String; // fullName này đã từ decodedApiResponseBody
-            final String backendUserIdString = backendUserIdRaw.toString();
-            // Lấy các thông tin khác nếu có từ API backend
-            final String? avatarUrl = userData['avatar_url'] as String?;
-            final String? phone = userData['phone'] as String?;
-            // Email đã có từ Firebase, nhưng có thể lấy từ backend nếu muốn đồng bộ
-            final String emailFromBackend = userData['email'] as String? ?? _emailController.text.trim();
-
-
-            SharedPreferences prefs = await SharedPreferences.getInstance();
-            await prefs.setString('user_uid', backendUserIdString);
-            await prefs.setString('user_fullName', fullName); // Lưu tên đã được decode đúng
-            if (avatarUrl != null) await prefs.setString('user_avatarUrl', avatarUrl);
-            if (phone != null) await prefs.setString('user_phone', phone);
-            await prefs.setString('user_email', emailFromBackend); // Có thể lưu email từ backend
-
-
-            print("Đã lưu Backend User ID ('${backendUserIdString}') và Full Name ('$fullName') vào SharedPreferences.");
-
-            if (!mounted) return;
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const HomeScreen(),
-              ),
-            );
-          } catch (e) {
-            print("Lỗi khi lưu SharedPreferences: $e");
-            if (mounted) {
-              setState(() { _errorMessage = 'Lỗi lưu trạng thái đăng nhập.'; });
-            }
-          }
-        } else { // Lỗi từ API Backend
-          final errorData = jsonDecode(decodedApiResponseBody);
-          String apiErrorMessage = 'Không thể xác minh người dùng với server.';
-          if (errorData['detail'] != null) {
-            apiErrorMessage = errorData['detail'].toString();
-          } else if (errorData['message'] != null) {
-            apiErrorMessage = errorData['message'].toString();
-          }
-          setState(() { // setState này sẽ được bao trong try-finally
-            _errorMessage = 'Xác thực thất bại: $apiErrorMessage';
-          });
-        }
-      } else { // Lỗi từ Firebase
-        String errorDetail;
-        if (firebaseResult['error'] != null && firebaseResult['error']['message'] != null) {
-          switch (firebaseResult['error']['message']) {
-            case 'EMAIL_NOT_FOUND':
-              errorDetail = 'Email không tồn tại.';
-              break;
-            case 'INVALID_PASSWORD':
-            case 'INVALID_LOGIN_CREDENTIALS':
-              errorDetail = 'Mật khẩu không đúng.';
-              break;
-            case 'USER_DISABLED':
-              errorDetail = 'Tài khoản đã bị vô hiệu hóa bởi quản trị viên.';
-              break;
-            case 'INVALID_EMAIL':
-              errorDetail = 'Địa chỉ email không hợp lệ.';
-              break;
-            default:
-              errorDetail = firebaseResult['error']['message']?.toString() ?? 'Lỗi không xác định từ Firebase.';
-          }
-        } else {
-          errorDetail = 'Lỗi không xác định từ Firebase.';
-        }
-        setState(() { // setState này sẽ được bao trong try-finally
-          _errorMessage = 'Đăng nhập thất bại: $errorDetail';
-        });
-      }
-    } on SocketException {
-      if (mounted) {
+      if (user != null) {
+        // 3. Thành công -> Vào Home
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      } else {
         setState(() {
-          _errorMessage = 'Không có kết nối internet. Vui lòng kiểm tra lại.';
-        });
-      }
-    } on TimeoutException {
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Yêu cầu quá thời gian. Vui lòng thử lại.';
-        });
-      }
-    } on http.ClientException catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Lỗi kết nối: ${e.message}. Vui lòng thử lại sau.';
+          _errorMessage = 'Đăng nhập thất bại. Kiểm tra email/pass.';
         });
       }
     } catch (e) {
-      print("Lỗi không mong muốn trong _signIn: ${e.toString()}");
-      if (mounted) {
-        setState(() {
-          _errorMessage = "Đã xảy ra lỗi: ${e.toString()}";
-        });
-      }
+       setState(() {
+        _errorMessage = 'Lỗi: $e';
+      });
     } finally {
-      // Đảm bảo _isLoading luôn được đặt lại nếu widget vẫn còn mounted
-      if (mounted) {
-        setState(() { _isLoading = false; });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
