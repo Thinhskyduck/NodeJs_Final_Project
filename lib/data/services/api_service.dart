@@ -62,10 +62,12 @@ class ApiService {
   }
 
   // --- PRODUCTS ---
-  Future<List<Product>> fetchProducts({int limit = 20, String? search}) async {
+  Future<List<Product>> fetchProducts({int limit = 20, String? search, String? sortBy, int? categoryId }) async {
     try {
       String query = 'limit=$limit';
       if (search != null) query += '&keyword=$search';
+      if (sortBy != null) query += '&sort=$sortBy';
+      if (categoryId != null) query += '&categoryId=$categoryId';
       
       final response = await http.get(
         Uri.parse('${AppConstants.baseUrl}/products?$query'),
@@ -262,6 +264,50 @@ class ApiService {
     } catch (e) {
       print('Get my orders error: $e');
       return [];
+    }
+  }
+
+  // --- GUEST CHECKOUT ---
+  Future<bool> createGuestOrder({
+    required String fullName,
+    required String email,
+    required String addressLine,
+    required String city,
+    required String phone,
+    required List<Map<String, dynamic>> cartItems, // Frontend tự truyền list item
+    String paymentMethod = 'COD',
+  }) async {
+    try {
+      // Vì khách chưa đăng nhập nên không có headers chứa Token
+      final headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+      };
+
+      final body = jsonEncode({
+        'fullName': fullName,
+        'email': email,
+        'shippingAddress': {
+          'addressLine': addressLine,
+          'city': city,
+          'postalCode': '700000', // Hardcode hoặc cho nhập
+          'country': 'Vietnam'
+        },
+        'paymentMethod': paymentMethod,
+        'cartItems': cartItems, // [ { product: "id", variant: "id", quantity: 1, price: 10000 }, ... ]
+      });
+
+      final response = await http.post(
+        Uri.parse('${AppConstants.baseUrl}/orders/guest'),
+        headers: headers,
+        body: body,
+      );
+
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      print('Create guest order error: $e');
+      return false;
     }
   }
 }

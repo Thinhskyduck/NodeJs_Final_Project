@@ -5,6 +5,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../data/models/product_model.dart';
 import '../../../data/services/api_service.dart';
 import '../../3_cart/screens/cart_screen.dart';
+import '../../../data/services/cart_service.dart';
 
 class ProductDetailsScreen2 extends StatefulWidget {
   final String productId; // Đã đổi từ int sang String
@@ -16,6 +17,7 @@ class ProductDetailsScreen2 extends StatefulWidget {
 
 class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
   final ApiService _apiService = ApiService();
+  final CartService _cartService = CartService(); // Thêm cái này
   Product? _product;
   bool _isLoading = true;
   int _selectedVariantIndex = 0;
@@ -39,17 +41,22 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
   Future<void> _addToCart() async {
     if (_product == null || _product!.variants.isEmpty) return;
     
-    // Lấy data cần thiết
-    String productId = _product!.id; // ID sản phẩm
-    String variantId = _product!.variants[_selectedVariantIndex].id; // ID variant
+    String productId = _product!.id;
+    String variantId = _product!.variants[_selectedVariantIndex].id;
     
-    // Gọi API
-    bool success = await _apiService.addToCart(productId, variantId, 1);
+    // Dữ liệu phụ cho giỏ hàng Offline (Local Storage)
+    String name = _product!.name + " - " + _product!.variants[_selectedVariantIndex].name;
+    int price = _product!.variants[_selectedVariantIndex].price;
+    String image = _product!.thumbnailUrl;
+
+    // Gọi qua CartService
+    bool success = await _cartService.addToCart(productId, variantId, 1, 
+        name: name, price: price, image: image);
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? "Đã thêm vào giỏ hàng" : "Lỗi: Vui lòng đăng nhập"),
+          content: Text(success ? "Đã thêm vào giỏ hàng" : "Lỗi thêm vào giỏ"),
           backgroundColor: success ? Colors.green : Colors.red,
         )
       );

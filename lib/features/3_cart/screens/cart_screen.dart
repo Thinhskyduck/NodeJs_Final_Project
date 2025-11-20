@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../data/models/cart_model.dart';
 import '../../../data/services/api_service.dart';
-import '../../4_checkout/screens/check_out_infor_screen.dart'; // Để điều hướng sau này
-import '../../4_checkout/screens/checkout_screen.dart'; // File mới tạo ở bước 3
+import '../../4_checkout/screens/check_out_infor_screen.dart'; 
+import '../../4_checkout/screens/checkout_screen.dart'; 
+import '../../../data/services/cart_service.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -13,9 +14,10 @@ class CartScreen extends StatefulWidget {
 }
 
 class _CartScreenState extends State<CartScreen> {
-  final ApiService _apiService = ApiService();
-  Cart? _cart;
+  final CartService _cartService = CartService();
+  List<CartItem> _items = [];
   bool _isLoading = true;
+  int _totalPrice = 0;
 
   @override
   void initState() {
@@ -25,27 +27,22 @@ class _CartScreenState extends State<CartScreen> {
 
   Future<void> _fetchCart() async {
     setState(() => _isLoading = true);
-    final cart = await _apiService.getCart();
+    final items = await _cartService.getCartItems();
+
+    int total = items.fold(0, (sum, i) => sum + (i.price * i.quantity));
+
     if (mounted) {
       setState(() {
-        _cart = cart;
+        _items = items;
+        _totalPrice = total;
         _isLoading = false;
       });
     }
   }
 
   Future<void> _removeItem(String itemId) async {
-    final success = await _apiService.removeCartItem(itemId);
-    if (success) {
-      _fetchCart(); // Load lại giỏ sau khi xóa
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Đã xóa sản phẩm")),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Lỗi khi xóa sản phẩm")),
-      );
-    }
+    final success = await _cartService.removeItem(itemId);
+    if (success) _fetchCart();
   }
 
   @override
@@ -54,16 +51,16 @@ class _CartScreenState extends State<CartScreen> {
       appBar: AppBar(title: const Text("Giỏ hàng")),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _cart == null || _cart!.items.isEmpty
+          : _items.isEmpty // Sửa: Kiểm tra _items thay vì _cart
               ? const Center(child: Text("Giỏ hàng trống"))
               : Column(
                   children: [
                     Expanded(
                       child: ListView.separated(
-                        itemCount: _cart!.items.length,
+                        itemCount: _items.length, // Sửa: Dùng _items.length
                         separatorBuilder: (ctx, i) => const Divider(),
                         itemBuilder: (ctx, index) {
-                          final item = _cart!.items[index];
+                          final item = _items[index]; // Sửa: Lấy từ _items
                           return ListTile(
                             leading: Image.network(
                               item.image,
@@ -94,7 +91,7 @@ class _CartScreenState extends State<CartScreen> {
   Widget _buildBottomBar() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
         boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5))],
       ),
@@ -107,19 +104,22 @@ class _CartScreenState extends State<CartScreen> {
             children: [
               const Text("Tổng cộng:", style: TextStyle(fontSize: 14)),
               Text(
-                NumberFormat("#,##0₫", "vi_VN").format(_cart?.totalPrice ?? 0),
+                NumberFormat("#,##0₫", "vi_VN").format(_totalPrice), // Sửa: Dùng _totalPrice
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red),
               ),
             ],
           ),
           ElevatedButton(
             onPressed: () {
-               // SỬA LẠI: Chuyển sang CheckoutScreen mới
-               if (_cart != null && _cart!.items.isNotEmpty) {
-                 Navigator.push(context, MaterialPageRoute(builder: (_) => const CheckoutScreen()));
-               } else {
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Giỏ hàng trống")));
-               }
+              if (_items.isNotEmpty) { // Sửa: Kiểm tra _items
+                // Truyền danh sách item và tổng tiền sang Checkout
+                Navigator.push(context, MaterialPageRoute(builder: (_) => CheckoutScreen(
+                  cartItems: _items, // Sửa: Truyền _items
+                  totalPrice: _totalPrice, // Sửa: Truyền _totalPrice
+                )));
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Giỏ hàng trống")));
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,

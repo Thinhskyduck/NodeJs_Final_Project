@@ -1,39 +1,39 @@
 import 'dart:async';
-import 'package:cross_platform_mobile_app_development/features/2_product/screens/product_detail.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Import các file mới đã refactor
+// Import các file core/data
 import '../../../core/constants/app_constants.dart';
 import '../../../data/models/product_model.dart';
 import '../../../data/services/api_service.dart';
 import '../../../layout/footer.dart';
 import '../../../layout/header.dart';
 
-// Tạm thời comment dòng import chi tiết sản phẩm để tránh lỗi biên dịch
-// import '../../2_product/screens/product_detail.dart'; 
+// Import các màn hình chức năng
+import '../../2_product/screens/product_detail.dart';
 import '../../3_cart/screens/cart_screen.dart';
 import '../../5_profile/screens/profile_screen.dart';
+import '../../2_product/screens/catalog_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  // Giữ lại bộ màu sắc cũ của bạn
+  // Màu sắc giao diện
   static const Color themeBluePrimary = Color(0xFF007BFF);
-  static const Color themeBlueDark = Color(0xFF0056b3);
+  static const Color themePageBackground = Color(0xFFF0F2F5);
   static const Color cpsTextBlack = Color(0xFF222222);
+  static const Color cpsStarYellow = Color(0xFFFFC107);
+  
+  // Các màu phụ trợ (giữ lại để tránh lỗi import từ file khác)
+  static const Color themeBlueDark = Color(0xFF0056b3);
   static const Color cpsTextGrey = Color(0xFF4A4A4A);
   static const Color cpsSubtleTextGrey = Color(0xFF757575);
   static const Color cpsCardBorderColor = Color(0xFFE0E0E0);
-  static const Color cpsStarYellow = Color(0xFFFFC107);
-  static const Color themePageBackground = Color(0xFFF0F2F5);
   static const Color themeBlueLight = Color(0xFFE0EFFF);
   static const Color cpsInstallmentBlue = Color(0xFF007AFF);
-  
-  // Màu cho Profile (giữ lại để không lỗi file khác import)
   static const Color imageRedAccent = Color(0xFF007BFF);
   static const Color imageLightRedBackground = Color(0xFFFDEBEE);
   static const Color imagePageBackground = Color(0xFFF5F5F5);
@@ -48,26 +48,47 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // --- KHAI BÁO BIẾN MỚI ---
   final ApiService _apiService = ApiService();
   
-  // List sản phẩm chính
+  // --- DATA STATE ---
   List<Product> _products = [];
   bool _isLoading = true;
-  
-  // Thông tin user
   Map<String, dynamic>? _currentUserData;
-  
-  // Controller cho Banner
+
+  // --- FILTER STATE ---
+  String _searchKeyword = "";
+  String _sortBy = "newest"; // Options: newest, price_asc, price_desc
+
+  // --- BANNER STATE ---
   final PageController _bannerPageController = PageController();
   int _currentBannerPage = 0;
   Timer? _bannerTimer;
+
+  // Dữ liệu Banner (Đã sửa thành Laptop/PC)
+  final List<Map<String, dynamic>> _slidingBannersData = [
+    {
+      'assetImagePath': 'assets/images/placeholder.png', // Hãy thay bằng ảnh banner laptop thật
+      'brandText': 'Gaming Laptop',
+      'mainTitleLine1': 'Sức mạnh RTX 4090',
+      'mainTitleLine2': 'Chiến game đỉnh cao.',
+      'gradientColors': [Color(0xFF1A237E), Color(0xFF0D47A1)],
+      'mainTitleColor': Colors.white,
+    },
+    {
+      'assetImagePath': 'assets/images/placeholder.png',
+      'brandText': 'Linh kiện PC',
+      'mainTitleLine1': 'Nâng cấp RAM/SSD',
+      'mainTitleLine2': 'Hiệu năng vượt trội.',
+      'gradientColors': [Color(0xFF004D40), Color(0xFF00695C)],
+      'mainTitleColor': Colors.white,
+    },
+  ];
 
   @override
   void initState() {
     super.initState();
     _startBannerTimer();
-    _initData(); // Hàm khởi tạo dữ liệu mới
+    _initData();
   }
 
   @override
@@ -76,65 +97,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _bannerTimer?.cancel();
     super.dispose();
   }
-
-  // --- LOGIC LẤY DỮ LIỆU ---
-  Future<void> _initData() async {
-    setState(() => _isLoading = true);
-
-    // 1. KIỂM TRA TRẠNG THÁI ĐĂNG NHẬP
-    // Gọi API profile để xác thực token và lấy thông tin mới nhất
-    final user = await _apiService.getUserProfile();
-    
-    if (mounted) {
-      setState(() {
-        if (user != null) {
-          // Nếu lấy được user -> Đã đăng nhập
-          _currentUserData = {
-            'full_name': user.fullName,
-            'email': user.email,
-            'user_id': user.id, // Lưu lại ID để dùng cho Cart
-          };
-        } else {
-          // Nếu không -> Là khách
-          _currentUserData = null;
-        }
-      });
-    }
-
-    // 2. TẢI DANH SÁCH SẢN PHẨM (Giữ nguyên code cũ)
-    try {
-      final products = await _apiService.fetchProducts(limit: 20);
-      if (mounted) {
-        setState(() {
-          _products = products;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      print("Lỗi tải sản phẩm: $e");
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  // --- BANNER SLIDER (GIỮ NGUYÊN LOGIC CŨ VÌ NÓ TĨNH) ---
-  final List<Map<String, dynamic>> _slidingBannersData = [
-    {
-      'assetImagePath': 'assets/images/banner_iphone16_titan_bg.png',
-      'brandText': 'iPhone 16 Pro Max',
-      'mainTitleLine1': 'Thiết kế Titan',
-      'mainTitleLine2': 'Tuyệt đẹp.',
-      'gradientColors': [Color(0xFFE0F2FF), Color(0xFFF8E2FF)],
-      'mainTitleColor': Color(0xFF0071E3),
-    },
-    {
-      'assetImagePath': 'assets/images/banner_s25_ultra_bg.png',
-      'brandText': 'Galaxy S25 Ultra',
-      'mainTitleLine1': 'Quyền năng AI',
-      'mainTitleLine2': 'Bứt phá mọi giới hạn.',
-      'gradientColors': [Color(0xFFEDE7F6), Color(0xFFD1C4E9)],
-      'mainTitleColor': Colors.deepPurple,
-    },
-  ];
 
   void _startBannerTimer() {
     _bannerTimer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
@@ -149,97 +111,164 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // --- UI BUILD ---
+  Future<void> _initData() async {
+    await _checkLoginStatus();
+    await _fetchProducts();
+  }
+
+  Future<void> _checkLoginStatus() async {
+    final user = await _apiService.getUserProfile();
+    if (mounted) {
+      setState(() {
+        if (user != null) {
+          _currentUserData = {
+            'full_name': user.fullName,
+            'email': user.email,
+            'user_id': user.id,
+          };
+        } else {
+          _currentUserData = null;
+        }
+      });
+    }
+  }
+
+  // Hàm gọi API lấy sản phẩm (Có Filter & Sort & Search)
+  Future<void> _fetchProducts() async {
+    setState(() => _isLoading = true);
+    try {
+      // Map giá trị dropdown sang tham số backend
+      String? sortParam;
+      if (_sortBy == 'price_asc') sortParam = 'price';
+      if (_sortBy == 'price_desc') sortParam = '-price';
+      // Nếu là 'newest', backend thường mặc định là -createdAt, hoặc có thể truyền '-createdAt'
+
+      final products = await _apiService.fetchProducts(
+        limit: 20,
+        search: _searchKeyword.isNotEmpty ? _searchKeyword : null,
+        sortBy: sortParam, // <-- Đây là chỗ sửa lỗi: truyền tham số sortBy
+      );
+      
+      if (mounted) {
+        setState(() {
+          _products = products;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print("Lỗi tải sản phẩm: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
     final bool isWeb = kIsWeb;
 
     return Scaffold(
       backgroundColor: HomeScreen.themePageBackground,
       appBar: PreferredSize(
-        preferredSize: Size.fromHeight(isWeb ? 60 : 50 + MediaQuery.of(context).padding.top),
-        child: CustomHeader(
-          categories: [], // Tạm thời để rỗng
-          currentUserData: _currentUserData,
-          cartItemCount: 0, // Chưa xử lý giỏ hàng
-          onCartPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen())),
-          onAccountPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountPage())),
-          onLogoTap: _initData,
+        // FIX LỖI OVERFLOW: Tăng chiều cao từ 100 lên 140
+        preferredSize: Size.fromHeight(isWeb ? 140 : 130 + MediaQuery.of(context).padding.top),
+        child: Column(
+          children: [
+            CustomHeader(
+              categories: [],
+              currentUserData: _currentUserData,
+              cartItemCount: 0,
+              onCartPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen())),
+              onAccountPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountPage())),
+              onLogoTap: _initData,
+            ),
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: SizedBox( // Bọc TextField trong SizedBox để cố định chiều cao
+                height: 45,
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: "Tìm Laptop, VGA, RAM...",
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                    fillColor: Colors.grey.shade100,
+                    filled: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                  ),
+                  onSubmitted: (value) {
+                    // Khi search -> Chuyển sang trang Catalog
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => CatalogScreen(initialSearch: value)));
+                  },
+                ),
+              ),
+            )
+          ],
         ),
       ),
       body: RefreshIndicator(
         onRefresh: _initData,
-        child: CustomScrollView(
-          slivers: [
-            // 1. Banner Slider
-            SliverToBoxAdapter(
-              child: Container(
-                height: isWeb ? 350 : 200,
+        child: SingleChildScrollView( // Dùng SingleChildScrollView thay vì CustomScrollView cho đơn giản
+          child: Column(
+            children: [
+              // 1. Banner
+              Container(
+                height: isWeb ? 350 : 180, // Giảm chiều cao banner mobile cho đỡ chiếm chỗ
                 margin: const EdgeInsets.all(16),
                 child: PageView.builder(
                   controller: _bannerPageController,
                   itemCount: _slidingBannersData.length,
-                  itemBuilder: (context, index) {
-                    return _buildBannerItem(_slidingBannersData[index]);
-                  },
+                  itemBuilder: (context, index) => _buildBannerItem(_slidingBannersData[index]),
                 ),
               ),
-            ),
 
-            // 2. Tiêu đề Section
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              // 2. Header List Sản phẩm
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Icon(Icons.whatshot, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text(
-                      "GỢI Ý CHO BẠN",
-                      style: GoogleFonts.roboto(
-                        fontSize: 18, 
-                        fontWeight: FontWeight.bold,
-                        color: HomeScreen.cpsTextBlack
-                      ),
-                    ),
+                    const Text("GỢI Ý CHO BẠN", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    TextButton(
+                      onPressed: () {
+                         // Chuyển sang trang Catalog
+                         Navigator.push(context, MaterialPageRoute(builder: (_) => const CatalogScreen()));
+                      },
+                      child: const Text("Xem tất cả >"),
+                    )
                   ],
                 ),
               ),
-            ),
 
-            // 3. Grid Sản phẩm (Quan trọng nhất)
-            _isLoading 
-            ? const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator())))
-            : _products.isEmpty
-              ? const SliverToBoxAdapter(child: Center(child: Text("Chưa có sản phẩm nào")))
-              : SliverPadding(
-                  padding: const EdgeInsets.all(16),
-                  sliver: SliverGrid(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: isWeb ? (screenWidth > 1000 ? 5 : 4) : 2,
-                      childAspectRatio: 0.7, // Tỷ lệ khung hình thẻ sản phẩm
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        return _buildProductCard(_products[index]);
+              // 3. List ngang (Horizontal List)
+              SizedBox(
+                height: 280, // Chiều cao cố định cho list ngang
+                child: _isLoading 
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      itemCount: _products.length,
+                      itemBuilder: (context, index) {
+                        return SizedBox(
+                          width: 180, // Chiều rộng mỗi thẻ
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 12),
+                            child: _buildProductCard(_products[index]),
+                          ),
+                        );
                       },
-                      childCount: _products.length,
                     ),
-                  ),
-                ),
-                
-            // 4. Footer
-            const SliverToBoxAdapter(child: AppFooter()),
-          ],
+              ),
+              
+              const SizedBox(height: 20),
+              const AppFooter(),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // --- WIDGET CON: BANNER ITEM ---
+  // Widget hiển thị Banner
   Widget _buildBannerItem(Map<String, dynamic> data) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -249,30 +278,37 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Stack(
         children: [
+          // Background placeholder
+           Positioned.fill(
+            child: Opacity(
+              opacity: 0.3,
+              child: Image.asset('/images/placeholder.png', fit: BoxFit.cover),
+              // child: Image.network("https://via.placeholder.com/800x400.png?text=COMPUTER+BANNER", fit: BoxFit.cover),
+            ),
+          ),
           Positioned(
             left: 20, top: 20, bottom: 20,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(data['brandText'], style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                SizedBox(height: 10),
-                Text(data['mainTitleLine1'], style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: data['mainTitleColor'])),
-                Text(data['mainTitleLine2'], style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: data['mainTitleColor'])),
+                Text(data['brandText'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white70)),
+                const SizedBox(height: 10),
+                Text(data['mainTitleLine1'], style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.white)),
+                Text(data['mainTitleLine2'], style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.white)),
               ],
             ),
           ),
-          // Nếu có ảnh thật thì hiển thị ở đây (tạm thời dùng màu gradient)
         ],
       ),
     );
   }
 
-  // --- WIDGET CON: THẺ SẢN PHẨM (PRODUCT CARD) ---
+  // Widget hiển thị Thẻ sản phẩm (Product Card)
   Widget _buildProductCard(Product product) {
     return GestureDetector(
       onTap: () {
-        // TODO: Mở trang chi tiết (Sẽ fix ở bước sau)
+        // Điều hướng đến trang chi tiết, truyền ID sản phẩm
         Navigator.push(context, MaterialPageRoute(builder: (_) => ProductDetailsScreen2(productId: product.id)));
       },
       child: Container(
@@ -281,7 +317,7 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Colors.grey.shade200),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: Offset(0, 2))
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))
           ],
         ),
         child: Column(
@@ -296,13 +332,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Image.network(
                     product.thumbnailUrl,
                     fit: BoxFit.contain,
-                    errorBuilder: (c, e, s) => Image.asset('assets/images/placeholder.png', fit: BoxFit.contain),
+                    // Xử lý khi ảnh lỗi thì hiện placeholder
+                    errorBuilder: (c, e, s) => Image.asset('/images/placeholder.png', fit: BoxFit.contain),
                   ),
                 ),
               ),
             ),
             
-            // 2. Thông tin
+            // 2. Thông tin (Tên, Giá, Rating)
             Expanded(
               flex: 4,
               child: Padding(
@@ -311,11 +348,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    // Tên sản phẩm
                     Text(
                       product.name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: HomeScreen.cpsTextBlack),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: HomeScreen.cpsTextBlack),
                     ),
                     
                     Column(
@@ -324,16 +362,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         // Giá tiền
                         Text(
                           product.salePriceText, // Đã được format trong Model
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red),
                         ),
                         
-                        // Rating
-                        if (product.averageRating > 0)
+                        const SizedBox(height: 4),
+                        
+                        // Rating sao
                         Row(
                           children: [
-                            Icon(Icons.star, size: 14, color: HomeScreen.cpsStarYellow),
-                            SizedBox(width: 4),
-                            Text("${product.averageRating}", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            const Icon(Icons.star, size: 14, color: HomeScreen.cpsStarYellow),
+                            const SizedBox(width: 4),
+                            Text("${product.averageRating > 0 ? product.averageRating : '5.0'}", 
+                              style: const TextStyle(fontSize: 12, color: Colors.grey)
+                            ),
+                            const SizedBox(width: 8),
+                            const Text("Đã bán 100+", style: TextStyle(fontSize: 10, color: Colors.grey)),
                           ],
                         )
                       ],
