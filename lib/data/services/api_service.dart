@@ -61,30 +61,77 @@ class ApiService {
     return true; 
   }
 
-  // --- PRODUCTS ---
-  Future<List<Product>> fetchProducts({int limit = 20, String? search, String? sortBy, int? categoryId }) async {
+  // --- CHANGE PASSWORD ---
+  Future<Map<String, dynamic>> changePassword(String oldPassword, String newPassword) async {
     try {
-      String query = 'limit=$limit';
-      if (search != null) query += '&keyword=$search';
-      if (sortBy != null) query += '&sort=$sortBy';
-      if (categoryId != null) query += '&categoryId=$categoryId';
-      
-      final response = await http.get(
-        Uri.parse('${AppConstants.baseUrl}/products?$query'),
+      final response = await http.put(
+        Uri.parse('${AppConstants.baseUrl}/users/change-password'),
         headers: await _getHeaders(),
+        body: jsonEncode({
+          'oldPassword': oldPassword,
+          'newPassword': newPassword,
+        }),
       );
 
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+
       if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        List<dynamic> list = [];
-        if (data is Map && data.containsKey('products')) list = data['products'];
-        else if (data is List) list = data;
-        return list.map((e) => Product.fromJson(e)).toList();
+        return {'success': true, 'message': 'Đổi mật khẩu thành công'};
+      } else {
+        return {'success': false, 'message': data['message'] ?? 'Đổi mật khẩu thất bại'};
       }
-      return [];
     } catch (e) {
-      print('Fetch products error: $e');
-      return [];
+      return {'success': false, 'message': 'Lỗi kết nối: $e'};
+    }
+  }
+
+  // --- PRODUCTS ---
+  Future<List<Product>> fetchProducts({
+    int page = 1,
+    int limit = 10,
+    String? search,
+    String? sortBy,
+    int? categoryId,
+  }) async {
+    // 1. Xây dựng Query String (chuỗi tham số trên URL)
+    String queryString = "page=$page&limit=$limit";
+    
+    if (search != null && search.isNotEmpty) {
+      queryString += "&keyword=$search"; // Backend bạn dùng 'keyword' hay 'search'? Thường là keyword
+    }
+    if (sortBy != null && sortBy.isNotEmpty) {
+      queryString += "&sort=$sortBy"; 
+    }
+    if (categoryId != null) {
+      queryString += "&category=$categoryId";
+    }
+
+    // 2. Gọi API với query string đã tạo
+    // Giả sử baseUrl là 'http://localhost:5000/api'
+    // URL cuối cùng sẽ dạng: .../products?page=1&limit=10&sort=-price
+    final response = await http.get(
+      Uri.parse('${AppConstants.baseUrl}/products?$queryString'), 
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      
+      // Tùy cấu trúc backend trả về, thường danh sách nằm trong data['products'] hoặc data['data']
+      // Nếu backend trả trực tiếp List thì dùng: List<dynamic> productsJson = data;
+      // Dưới đây là code an toàn, thử lấy list từ các key phổ biến:
+      List<dynamic> productsJson = [];
+      if (data is List) {
+        productsJson = data;
+      } else if (data['products'] != null) {
+        productsJson = data['products'];
+      } else if (data['data'] != null) {
+        productsJson = data['data'];
+      }
+
+      return productsJson.map((json) => Product.fromJson(json)).toList();
+    } else {
+      throw Exception('Failed to load products');
     }
   }
 
@@ -115,14 +162,41 @@ class ApiService {
     return products.map((p) => ProductListItem(
       id: p.id, 
       name: p.name, 
-      thumbnailUrl: p.thumbnailUrl ?? '', 
+      thumbnailUrl: p.thumbnailUrl, 
       price: p.salePriceText
     )).toList();
   }
 
-  Future<List<dynamic>> getProductReviews(String productId) async {
-    return []; // Trả về list rỗng
+  // --- REVIEW ---
+  // Gọi API: POST /api/products/:id/reviews
+  Future<Map<String, dynamic>> createProductReview(String productId, double? rating, String comment, {String guestName = 'Khách'}) async {
+    try {
+      final headers = await _getHeaders(); // Hàm này tự động thêm Token nếu có
+      
+      final body = jsonEncode({
+        'rating': rating, // Có thể null
+        'comment': comment,
+        'guestName': guestName // Gửi thêm tên khách
+      });
+
+      final response = await http.post(
+        Uri.parse('${AppConstants.baseUrl}/products/$productId/reviews'),
+        headers: headers, // Vẫn gửi header, nếu có token backend sẽ nhận, ko có thì thôi
+        body: body,
+      );
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      
+      if (response.statusCode == 201) {
+        return {'success': true, 'message': 'Đánh giá thành công!'};
+      } else {
+        return {'success': false, 'message': data['message'] ?? 'Lỗi khi đánh giá'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Lỗi kết nối: $e'};
+    }
   }
+
   // --- USER PROFILE ---
   // Hàm này dùng để kiểm tra token còn hạn không và lấy thông tin user
   Future<UserModel?> getUserProfile() async {
@@ -156,6 +230,8 @@ class ApiService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
   }
+
+  // --- CART ---
   // 1. Lấy giỏ hàng
   Future<Cart?> getCart() async {
     try {
@@ -307,6 +383,26 @@ class ApiService {
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
       print('Create guest order error: $e');
+      return false;
+    }
+  }
+
+  // Thêm địa chỉ mới
+  Future<bool> addAddress(String addressLine, String city, String postalCode, String country) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${AppConstants.baseUrl}/users/addresses'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'addressLine': addressLine,
+          'city': city,
+          'postalCode': postalCode,
+          'country': country
+        }),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      print('Add address error: $e');
       return false;
     }
   }

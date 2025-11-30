@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cross_platform_mobile_app_development/core/constants/app_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -51,8 +52,7 @@ class _ChangeProfileState extends State<ChangeProfile> {
 
     print("ChangeProfile: Loading user data for backend ID: ${widget.uid}");
     try {
-      final apiUrl = Uri.parse(
-          'https://tteaqwe3g9.ap-southeast-1.awsapprunner.com/api/v1/auth/auth/users/me');
+      final apiUrl = Uri.parse('${AppConstants.baseUrl}/users/profile');
       final response = await http.get(
         apiUrl,
         headers: {
@@ -115,8 +115,7 @@ class _ChangeProfileState extends State<ChangeProfile> {
 
       print("ChangeProfile: Saving profile for backend ID: ${widget.uid}");
       try {
-        final apiUrl = Uri.parse(
-            'https://tteaqwe3g9.ap-southeast-1.awsapprunner.com/api/v1/auth/auth/users/me');
+        final apiUrl = Uri.parse('${AppConstants.baseUrl}/users/profile');
         final body = jsonEncode({
           "full_name": _fullNameController.text.trim(),
           "phone_number": _phoneController.text.trim(),

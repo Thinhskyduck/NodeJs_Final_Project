@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-// import 'package:google_fonts/google_fonts.dart'; // Dòng này không được sử dụng trong code gốc, có thể bỏ qua
-
-import 'login.dart'; // Make sure this import is correct
+import 'login.dart';
+// 1. Import AppConstants
+import '../../../core/constants/app_constants.dart';
 
 class SignUp extends StatefulWidget {
   const SignUp({super.key});
@@ -17,18 +17,21 @@ class _SignUpState extends State<SignUp> {
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController fullNameController = TextEditingController();
   final TextEditingController phoneNumberController = TextEditingController();
+  final TextEditingController addressController = TextEditingController();
+
   bool _obscureText = true;
   String errorMessage = "";
   bool isLoading = false;
 
   Future<void> signUp() async {
-    // Basic validation
+    // Validate
     if (emailController.text.trim().isEmpty ||
         passwordController.text.trim().isEmpty ||
         fullNameController.text.trim().isEmpty ||
-        phoneNumberController.text.trim().isEmpty) {
+        phoneNumberController.text.trim().isEmpty ||
+        addressController.text.trim().isEmpty) {
       setState(() {
-        errorMessage = "Vui lòng điền đầy đủ thông tin.";
+        errorMessage = "Vui lòng điền đầy đủ thông tin (bao gồm địa chỉ).";
       });
       return;
     }
@@ -51,32 +54,27 @@ class _SignUpState extends State<SignUp> {
     });
 
     try {
+      // 2. Sử dụng AppConstants.baseUrl
+      // Route backend là: /api/users/register
+      // AppConstants.baseUrl đã là ".../api" nên ta chỉ cần nối thêm "/users/register"
       final response = await http.post(
-        // Uri.parse('https://tteaqwe3g9.ap-southeast-1.awsapprunner.com/api/v1/auth/auth/register'), // URL cũ
-        Uri.parse(
-            'https://tteaqwe3g9.ap-southeast-1.awsapprunner.com/api/v1/auth/register'), // <-- SỬA URL API
+        Uri.parse('${AppConstants.baseUrl}/users/register'),
         headers: {
           'accept': 'application/json',
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
           "email": emailController.text.trim(),
-          "full_name": fullNameController.text.trim(),
+          "fullName": fullNameController.text.trim(),
           "phone_number": phoneNumberController.text.trim(),
           "password": passwordController.text.trim(),
-          "role": "customer", // <-- THÊM TRƯỜNG ROLE
+          "address": addressController.text.trim(),
         }),
       );
 
       if (response.statusCode == 201) {
-        // <-- API trả về 201 khi thành công
-        // final responseData = jsonDecode(response.body); // Bạn có thể parse response nếu cần dùng dữ liệu trả về
         if (mounted) {
-          // Navigator.pushReplacement( // Bỏ dòng này
-          //   context,
-          //   MaterialPageRoute(builder: (context) => const Login()),
-          // );
-          Navigator.pop(context); // Chỉ cần pop màn hình SignUp, quay lại Login
+          Navigator.pop(context); // Quay lại màn hình Login
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
                 content: Text('Đăng ký thành công! Vui lòng đăng nhập.'),
@@ -89,7 +87,6 @@ class _SignUpState extends State<SignUp> {
         if (errorData['message'] != null) {
           apiErrorMessage = errorData['message'].toString();
         } else if (errorData['detail'] != null) {
-          // Một số API trả lỗi trong trường 'detail'
           apiErrorMessage = errorData['detail'].toString();
         }
 
@@ -160,6 +157,7 @@ class _SignUpState extends State<SignUp> {
                       ),
                     ),
                     const SizedBox(height: 35),
+                    
                     _buildTextField(
                       controller: fullNameController,
                       hintText: "Full Name",
@@ -168,6 +166,7 @@ class _SignUpState extends State<SignUp> {
                       lightBackgroundColor: lightBackgroundColor,
                     ),
                     const SizedBox(height: 18),
+                    
                     _buildTextField(
                       controller: emailController,
                       hintText: "Email Address",
@@ -177,6 +176,7 @@ class _SignUpState extends State<SignUp> {
                       lightBackgroundColor: lightBackgroundColor,
                     ),
                     const SizedBox(height: 18),
+                    
                     _buildTextField(
                       controller: phoneNumberController,
                       hintText: "Phone Number",
@@ -186,6 +186,16 @@ class _SignUpState extends State<SignUp> {
                       lightBackgroundColor: lightBackgroundColor,
                     ),
                     const SizedBox(height: 18),
+
+                    _buildTextField(
+                      controller: addressController,
+                      hintText: "Shipping Address",
+                      icon: Icons.location_on_outlined,
+                      primaryColor: primaryColor,
+                      lightBackgroundColor: lightBackgroundColor,
+                    ),
+                    const SizedBox(height: 18),
+
                     _buildPasswordField(
                       controller: passwordController,
                       hintText: "Password (min. 6 characters)",
@@ -199,6 +209,7 @@ class _SignUpState extends State<SignUp> {
                       },
                     ),
                     const SizedBox(height: 25),
+                    
                     if (errorMessage.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 15.0),
@@ -209,6 +220,7 @@ class _SignUpState extends State<SignUp> {
                           textAlign: TextAlign.center,
                         ),
                       ),
+                    
                     SizedBox(
                       height: 50,
                       child: isLoading

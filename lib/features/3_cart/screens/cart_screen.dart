@@ -60,23 +60,84 @@ class _CartScreenState extends State<CartScreen> {
                         itemCount: _items.length, // Sửa: Dùng _items.length
                         separatorBuilder: (ctx, i) => const Divider(),
                         itemBuilder: (ctx, index) {
-                          final item = _items[index]; // Sửa: Lấy từ _items
-                          return ListTile(
-                            leading: Image.network(
-                              item.image,
-                              width: 50,
-                              height: 50,
-                              fit: BoxFit.cover,
-                              errorBuilder: (c, e, s) => const Icon(Icons.image),
-                            ),
-                            title: Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(
-                              "${NumberFormat("#,##0₫", "vi_VN").format(item.price)} x ${item.quantity}",
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.grey),
-                              onPressed: () => _removeItem(item.itemId),
+                          final item = _items[index];
+                          return Card( // Dùng Card cho đẹp hơn trên Web
+                            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Row(
+                                children: [
+                                  // Ảnh
+                                  Image.network(
+                                    item.image,
+                                    width: 60,
+                                    height: 60,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (c, e, s) => const Icon(Icons.image),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  
+                                  // Thông tin
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                        Text(
+                                          NumberFormat("#,##0₫", "vi_VN").format(item.price),
+                                          style: const TextStyle(color: Colors.red),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
+                                  // Bộ điều chỉnh số lượng
+                                  Row(
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.remove_circle_outline, color: Colors.blue),
+                                        onPressed: item.quantity > 1 
+                                          ? () async {
+                                              // Logic giảm: Gọi service update (cần implement thêm trong service) 
+                                              // Hoặc tạm thời xóa đi thêm lại với quantity - 1 (Hack tạm nếu chưa sửa service)
+                                              await _cartService.addToCart(
+                                              item.productId, 
+                                              item.variantId, 
+                                              -1,
+                                              name: item.name,    // <--- Thêm dòng này
+                                              price: item.price,  // <--- Thêm dòng này
+                                              image: item.image   // <--- Thêm dòng này
+                                            );
+                                              _fetchCart();
+                                            } 
+                                          : null,
+                                      ),
+                                      Text("${item.quantity}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                      IconButton(
+                                        icon: const Icon(Icons.add_circle_outline, color: Colors.blue),
+                                        onPressed: () async {
+                                          // Logic tăng
+                                          await _cartService.addToCart(
+                                          item.productId, 
+                                          item.variantId, 
+                                          1,
+                                          name: item.name,    // <--- Thêm dòng này
+                                          price: item.price,  // <--- Thêm dòng này
+                                          image: item.image   // <--- Thêm dòng này
+                                        );
+                                          _fetchCart();
+                                        },
+                                      ),
+                                    ],
+                                  ),
+
+                                  // Nút xóa
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, color: Colors.grey),
+                                    onPressed: () => _removeItem(item.itemId),
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         },

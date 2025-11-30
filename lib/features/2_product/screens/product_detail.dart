@@ -6,9 +6,11 @@ import '../../../data/models/product_model.dart';
 import '../../../data/services/api_service.dart';
 import '../../3_cart/screens/cart_screen.dart';
 import '../../../data/services/cart_service.dart';
+import '../widgets/review_section.dart'; // <--- Import Widget mới
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class ProductDetailsScreen2 extends StatefulWidget {
-  final String productId; // Đã đổi từ int sang String
+  final String productId;
   const ProductDetailsScreen2({super.key, required this.productId});
 
   @override
@@ -17,17 +19,20 @@ class ProductDetailsScreen2 extends StatefulWidget {
 
 class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
   final ApiService _apiService = ApiService();
-  final CartService _cartService = CartService(); // Thêm cái này
+  final CartService _cartService = CartService();
   Product? _product;
   bool _isLoading = true;
   int _selectedVariantIndex = 0;
+  late IO.Socket _socket; // Khai báo socket
 
   @override
   void initState() {
     super.initState();
     _fetchData();
+    _initSocket();
   }
 
+  // Hàm load dữ liệu (gọi lại khi submit review xong)
   Future<void> _fetchData() async {
     final product = await _apiService.getProductDetail(widget.productId);
     if (mounted) {
@@ -38,18 +43,54 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
     }
   }
 
+  // Hàm khởi tạo kết nối Socket.IO
+  void _initSocket() {
+    // Thay URL bằng địa chỉ server của bạn
+    String socketUrl = AppConstants.baseUrl.replaceAll('/api', '');
+    _socket = IO.io(socketUrl, <String, dynamic>{
+      'transports': ['websocket'],
+      'autoConnect': false,
+    });
+
+    _socket.connect();
+
+    _socket.onConnect((_) {
+      print('Connected to Socket.IO');
+    });
+
+    // Lắng nghe sự kiện 'new_review' từ Backend
+    _socket.on('new_review', (data) {
+      if (mounted && data != null) {
+        // Kiểm tra xem review mới có thuộc về sản phẩm đang xem không
+        if (data['productId'] == widget.productId) {
+          print("Nhận được review mới real-time!");
+          // Reload lại dữ liệu để hiển thị review mới
+          _fetchData(); 
+          
+          // Hoặc nếu muốn mượt hơn, bạn có thể parse `data['review']` 
+          // rồi add trực tiếp vào list `_product.reviews` mà không cần gọi API lại.
+        }
+      }
+    });
+  }
+
+  // Ngắt kết nối khi thoát màn hình  
+  @override
+  void dispose() {
+    _socket.disconnect(); // Ngắt kết nối khi thoát màn hình
+    super.dispose();
+  }
+
   Future<void> _addToCart() async {
     if (_product == null || _product!.variants.isEmpty) return;
     
     String productId = _product!.id;
     String variantId = _product!.variants[_selectedVariantIndex].id;
     
-    // Dữ liệu phụ cho giỏ hàng Offline (Local Storage)
     String name = _product!.name + " - " + _product!.variants[_selectedVariantIndex].name;
     int price = _product!.variants[_selectedVariantIndex].price;
     String image = _product!.thumbnailUrl;
 
-    // Gọi qua CartService
     bool success = await _cartService.addToCart(productId, variantId, 1, 
         name: name, price: price, image: image);
     
@@ -85,21 +126,31 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
             SizedBox(
               height: 300,
               width: double.infinity,
-              child: p.thumbnailUrl != null
-                  ? Image.network(p.thumbnailUrl!, fit: BoxFit.contain)
-                  : Image.asset('/assets/img/placeholder.png'),
+              child: Image.network(
+                p.thumbnailUrl, 
+                fit: BoxFit.contain,
+                errorBuilder: (c,e,s) => const Icon(Icons.image_not_supported, size: 50),
+              ),
             ),
             const SizedBox(height: 20),
             
-            // 2. Tên & Giá
+            // 2. Tên & Giá & Rating Tổng quan
             Text(p.name, style: GoogleFonts.roboto(fontSize: 24, fontWeight: FontWeight.bold)),
-            Text(displayPrice, style: GoogleFonts.roboto(fontSize: 20, color: Colors.red, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text(displayPrice, style: GoogleFonts.roboto(fontSize: 20, color: Colors.red, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                const Icon(Icons.star, color: Colors.amber, size: 20),
+                Text(" ${p.averageRating.toStringAsFixed(1)} (${p.numReviews} đánh giá)", style: const TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
             
             const SizedBox(height: 20),
             
-            // 3. Chọn Variant (Nếu có)
+            // 3. Chọn Variant
             if (p.variants.isNotEmpty) ...[
-              Text("Chọn phiên bản:", style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text("Chọn phiên bản:", style: TextStyle(fontWeight: FontWeight.bold)),
               Wrap(
                 spacing: 8,
                 children: List.generate(p.variants.length, (index) {
@@ -115,10 +166,25 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
             ],
 
             const SizedBox(height: 20),
+            const Divider(),
             
             // 4. Mô tả
-            Text("Mô tả sản phẩm:", style: TextStyle(fontWeight: FontWeight.bold)),
-            Text(p.description ?? "Đang cập nhật..."),
+            const Text("Mô tả sản phẩm:", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(p.description ?? "Đang cập nhật...", style: const TextStyle(fontSize: 14, height: 1.5)),
+            
+            const SizedBox(height: 30),
+            const Divider(thickness: 2),
+            const SizedBox(height: 10),
+
+            // 5. PHẦN ĐÁNH GIÁ (REVIEW SECTION) - MỚI THÊM
+            ReviewSection(
+              productId: p.id,
+              reviews: p.reviews,
+              onReviewSubmitted: _fetchData, // Reload lại trang khi submit xong
+            ),
+            
+            const SizedBox(height: 80), // Khoảng trống bottom cho nút Add to Cart
           ],
         ),
       ),
@@ -128,9 +194,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
           onPressed: _addToCart,
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blue,
-            padding: EdgeInsets.symmetric(vertical: 15)
+            padding: const EdgeInsets.symmetric(vertical: 15)
           ),
-          child: Text("THÊM VÀO GIỎ HÀNG", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          child: const Text("THÊM VÀO GIỎ HÀNG", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         ),
       ),
     );

@@ -1,6 +1,6 @@
 import 'package:cross_platform_mobile_app_development/features/1_home/screens/home_screen.dart';
 import 'package:cross_platform_mobile_app_development/features/0_authentication/screens/login.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cross_platform_mobile_app_development/data/services/api_service.dart'; // Import API Service
 import 'package:flutter/material.dart';
 
 class ChangePassword extends StatefulWidget {
@@ -10,7 +10,6 @@ class ChangePassword extends StatefulWidget {
   State<ChangePassword> createState() => _ChangePasswordState();
 }
 
-// abs
 class _ChangePasswordState extends State<ChangePassword> {
   bool _oldPasswordVisible = false;
   bool _newPasswordVisible = false;
@@ -21,62 +20,46 @@ class _ChangePasswordState extends State<ChangePassword> {
 
   final TextEditingController oldPasswordController = TextEditingController();
   final TextEditingController newPasswordController = TextEditingController();
-  final TextEditingController confirmPasswordController =
-      TextEditingController();
+  final TextEditingController confirmPasswordController = TextEditingController();
 
-  final FirebaseAuth auth = FirebaseAuth.instance;
+  final ApiService _apiService = ApiService(); // Khởi tạo ApiService
 
-  signOut() async {
-    await auth.signOut();
-    Navigator.pushReplacement(
+  // Hàm đăng xuất sau khi đổi mật khẩu thành công
+  Future<void> signOut() async {
+    await _apiService.logout();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => Login()),
+      MaterialPageRoute(builder: (context) => const Login()),
+      (route) => false,
     );
   }
 
   Future<void> changePassword() async {
-    if (oldPasswordController.text == '') {
-      setState(() {
-        errorMessage = "Please enter old password";
-      });
+    // 1. Validate dữ liệu nhập vào
+    if (oldPasswordController.text.isEmpty) {
+      setState(() => errorMessage = "Vui lòng nhập mật khẩu cũ");
       return;
     }
-
-    if (oldPasswordController.text == newPasswordController.text ||
-        oldPasswordController.text == confirmPasswordController.text) {
-      setState(() {
-        errorMessage =
-            "Please enter password which is different from old password";
-      });
+    if (newPasswordController.text.isEmpty) {
+      setState(() => errorMessage = "Vui lòng nhập mật khẩu mới");
       return;
     }
-
-    if (newPasswordController.text == '') {
-      setState(() {
-        errorMessage = "Please enter new password";
-      });
+    if (confirmPasswordController.text.isEmpty) {
+      setState(() => errorMessage = "Vui lòng nhập xác nhận mật khẩu");
       return;
     }
-
-    if (confirmPasswordController.text == '') {
-      setState(() {
-        errorMessage = "Please enter confirmed password";
-      });
-      return;
-    }
-
     if (newPasswordController.text != confirmPasswordController.text) {
-      setState(() {
-        errorMessage = "New passwords do not match!";
-      });
+      setState(() => errorMessage = "Mật khẩu mới không khớp!");
       return;
     }
-
     if (newPasswordController.text.length < 6) {
-      setState(() {
-        errorMessage = "Password must be at least 6 characters long!";
-      });
+      setState(() => errorMessage = "Mật khẩu phải có ít nhất 6 ký tự");
       return;
+    }
+    if (oldPasswordController.text == newPasswordController.text) {
+       setState(() => errorMessage = "Mật khẩu mới không được trùng mật khẩu cũ");
+       return;
     }
 
     setState(() {
@@ -84,34 +67,31 @@ class _ChangePasswordState extends State<ChangePassword> {
       errorMessage = "";
     });
 
-    try {
-      User? user = auth.currentUser;
-      AuthCredential credential = EmailAuthProvider.credential(
-        email: user!.email!,
-        password: oldPasswordController.text,
-      );
+    // 2. Gọi API đổi mật khẩu
+    final result = await _apiService.changePassword(
+      oldPasswordController.text.trim(), 
+      newPasswordController.text.trim()
+    );
 
-      // Re-authenticate user
-      await user.reauthenticateWithCredential(credential);
+    setState(() {
+      isLoading = false;
+    });
 
-      // Change password
-      await user.updatePassword(newPasswordController.text);
-
-      setState(() {
-        isLoading = false;
-      });
-
+    if (result['success']) {
+      // Thành công
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Password changed successfully! Please login again"),
+        const SnackBar(
+          content: Text("Đổi mật khẩu thành công! Vui lòng đăng nhập lại."),
+          backgroundColor: Colors.green,
         ),
       );
-
+      // Đăng xuất để user đăng nhập lại bằng mật khẩu mới
       signOut();
-    } on FirebaseAuthException catch (e) {
+    } else {
+      // Thất bại
       setState(() {
-        isLoading = false;
-        errorMessage = e.message ?? "Error changing password.";
+        errorMessage = result['message'];
       });
     }
   }
@@ -129,30 +109,31 @@ class _ChangePasswordState extends State<ChangePassword> {
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: Colors.red,
-
+      backgroundColor: Colors.blue.shade700, // Chỉnh lại màu cho đồng bộ app
       appBar: AppBar(
         leading: IconButton(
-          icon: Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => HomeScreen()),
-            );
+            Navigator.pop(context);
           },
         ),
-        backgroundColor: Colors.red,
-        iconTheme: IconThemeData(color: Colors.white),
+        backgroundColor: Colors.blue.shade700,
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
       ),
 
       body: Align(
         alignment: Alignment.center,
         child: Container(
-          height: size.height * 0.7,
+          height: size.height * 0.75, // Tăng chiều cao một chút
           width: double.infinity,
+          margin: const EdgeInsets.only(top: 20), // Thêm margin top
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(30.0),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(30), 
+              topRight: Radius.circular(30)
+            ),
           ),
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -162,86 +143,71 @@ class _ChangePasswordState extends State<ChangePassword> {
                 children: [
                   const SizedBox(height: 10),
                   const Text(
-                    "CHANGE PASSWORD",
-                    style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold),
+                    "ĐỔI MẬT KHẨU",
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
                   ),
                   const SizedBox(height: 30),
 
+                  // Mật khẩu cũ
                   TextField(
                     controller: oldPasswordController,
                     obscureText: !_oldPasswordVisible,
                     decoration: InputDecoration(
-                      labelText: "Old Password",
-                      prefixIcon: const Icon(Icons.lock),
+                      labelText: "Mật khẩu cũ",
+                      prefixIcon: const Icon(Icons.lock_outline),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _oldPasswordVisible
-                              ? Icons.visibility
-                              : Icons.visibility_off,
-                          color: Theme.of(context).primaryColorDark,
+                          _oldPasswordVisible ? Icons.visibility : Icons.visibility_off,
                         ),
                         onPressed: () {
-                          setState(() {
-                            _oldPasswordVisible = !_oldPasswordVisible;
-                          });
+                          setState(() => _oldPasswordVisible = !_oldPasswordVisible);
                         },
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 20),
 
+                  // Mật khẩu mới
                   TextField(
                     controller: newPasswordController,
                     obscureText: !_newPasswordVisible,
                     decoration: InputDecoration(
-                      labelText: "New Password",
-                      prefixIcon: const Icon(Icons.lock),
+                      labelText: "Mật khẩu mới",
+                      prefixIcon: const Icon(Icons.lock_outline),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _newPasswordVisible
-                              ? Icons.visibility
-                              : Icons.visibility_off,
-                          color: Theme.of(context).primaryColorDark,
+                          _newPasswordVisible ? Icons.visibility : Icons.visibility_off,
                         ),
                         onPressed: () {
-                          setState(() {
-                            _newPasswordVisible = !_newPasswordVisible;
-                          });
+                          setState(() => _newPasswordVisible = !_newPasswordVisible);
                         },
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 20),
 
+                  // Xác nhận mật khẩu mới
                   TextField(
                     controller: confirmPasswordController,
                     obscureText: !_confirmedPasswordVisible,
                     decoration: InputDecoration(
-                      labelText: "Confirmed Password",
-                      prefixIcon: const Icon(Icons.lock),
+                      labelText: "Xác nhận mật khẩu mới",
+                      prefixIcon: const Icon(Icons.lock_outline),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _confirmedPasswordVisible
-                              ? Icons.visibility
-                              : Icons.visibility_off,
-                          color: Theme.of(context).primaryColorDark,
+                          _confirmedPasswordVisible ? Icons.visibility : Icons.visibility_off,
                         ),
                         onPressed: () {
-                          setState(() {
-                            _confirmedPasswordVisible =
-                                !_confirmedPasswordVisible;
-                          });
+                          setState(() => _confirmedPasswordVisible = !_confirmedPasswordVisible);
                         },
                       ),
                     ),
@@ -249,28 +215,35 @@ class _ChangePasswordState extends State<ChangePassword> {
 
                   if (errorMessage.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.all(8.0),
+                      padding: const EdgeInsets.symmetric(vertical: 15.0),
                       child: Text(
                         errorMessage,
-                        style: const TextStyle(color: Colors.red),
+                        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
+                        textAlign: TextAlign.center,
                       ),
                     ),
 
-                  const SizedBox(height: 60),
+                  const SizedBox(height: 40),
 
                   isLoading
                       ? const CircularProgressIndicator()
-                      : ElevatedButton(
-                        onPressed: changePassword,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFDB3022),
-                          minimumSize: const Size(double.infinity, 50),
+                      : SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: changePassword,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue.shade700,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)
+                              )
+                            ),
+                            child: const Text(
+                              "LƯU THAY ĐỔI",
+                              style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                          ),
                         ),
-                        child: const Text(
-                          "SAVE",
-                          style: TextStyle(fontSize: 18, color: Colors.white),
-                        ),
-                      ),
                   const SizedBox(height: 20),
                 ],
               ),

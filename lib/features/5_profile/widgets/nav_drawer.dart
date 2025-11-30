@@ -1,24 +1,28 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cross_platform_mobile_app_development/features/5_profile/screens/change_password.dart';
 import 'package:cross_platform_mobile_app_development/features/5_profile/screens/change_profile.dart';
 import 'package:cross_platform_mobile_app_development/features/1_home/screens/home_screen.dart';
 import 'package:cross_platform_mobile_app_development/features/0_authentication/screens/login.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../../data/services/api_service.dart'; // Import ApiService
 
 class NavDrawer extends StatelessWidget {
   final Map<String, dynamic>? userData;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  // BỎ DÒNG NÀY: final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  NavDrawer({super.key, this.userData});
+  const NavDrawer({super.key, this.userData});
 
   @override
   Widget build(BuildContext context) {
     final Color primaryColor = Colors.blue[700]!;
 
+    // ... (Giữ nguyên logic build UI Header như cũ)
+    // Phần check userData == null giữ nguyên
+
     if (userData == null) {
-      return Drawer(
+       // ... (Code cũ phần Guest)
+       return Drawer(
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -30,13 +34,13 @@ class NavDrawer extends StatelessWidget {
         ),
       );
     } else {
-      final fullName = userData?['full_name'] as String? ?? 'Người dùng';
+      // ... (Code cũ lấy fullName, email...)
+       final fullName = userData?['full_name'] as String? ?? 'Người dùng';
       final email = userData?['email'] as String? ?? 'Không có email';
       final imageLink = userData?['profile_image_url_or_similar_key'] as String?;
       final backendUserId = userData?['user_id']?.toString();
 
       if (backendUserId == null || backendUserId.isEmpty) {
-        print("NavDrawer Error: Missing or empty 'user_id' in userData.");
         return Drawer(
           child: SingleChildScrollView(
             child: Column(
@@ -71,6 +75,7 @@ class NavDrawer extends StatelessWidget {
     }
   }
 
+  // ... (Giữ nguyên các hàm _buildGuestHeader, _buildGuestMenuItems, buildHeader)
   Widget _buildGuestHeader(BuildContext context, Color backgroundColor) {
     return Material(
       color: backgroundColor,
@@ -155,7 +160,7 @@ class NavDrawer extends StatelessWidget {
     );
   }
 
-  Widget buildHeader(
+   Widget buildHeader(
       BuildContext context,
       String fullName,
       String email,
@@ -243,7 +248,8 @@ class NavDrawer extends StatelessWidget {
   }
 
   Widget buildMenuItems(BuildContext context, String backendUserId) {
-    return Container(
+    // ... Giữ nguyên
+     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
       child: Wrap(
         runSpacing: 8,
@@ -317,14 +323,18 @@ class NavDrawer extends StatelessWidget {
     );
   }
 
+  // SỬA HÀM NÀY: Xóa Firebase logout
   Future<void> _performLogout(BuildContext context) async {
     try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.remove('user_uid');
-      print("Đã xóa Backend User ID khỏi SharedPreferences");
+      final ApiService apiService = ApiService();
+      // Gọi hàm logout của ApiService (nếu có) hoặc tự xóa token
+      await apiService.logout(); 
 
-      await _auth.signOut();
-      print("Đã đăng xuất khỏi Firebase");
+      // Nếu ApiService.logout() của bạn chưa xóa prefs thì gọi dòng dưới:
+      // SharedPreferences prefs = await SharedPreferences.getInstance();
+      // await prefs.clear();
+
+      print("Đã đăng xuất");
 
       if (context.mounted) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -343,6 +353,7 @@ class NavDrawer extends StatelessWidget {
   }
 
   ImageProvider? getUserImage(String? imageLink) {
+    // ... Giữ nguyên
     if (imageLink == null || imageLink.isEmpty) return null;
     try {
       if (imageLink.startsWith('http')) return NetworkImage(imageLink);

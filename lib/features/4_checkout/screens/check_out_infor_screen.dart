@@ -1,5 +1,6 @@
 // Trong file: CheckoutInfoScreen.dart
 
+import 'package:cross_platform_mobile_app_development/core/constants/app_constants.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -260,7 +261,8 @@ class _CheckoutInfoScreenState extends State<CheckoutInfoScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse('https://tteaqwe3g9.ap-southeast-1.awsapprunner.com/api/v1/orders/preview'),
+        // AppConstants.baseUrl đã là ".../api"
+        Uri.parse('${AppConstants.baseUrl}/orders/preview'),
         headers: {
           'X-User-ID': widget.userId.toString(),
           'Content-Type': 'application/json',

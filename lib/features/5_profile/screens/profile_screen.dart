@@ -1,3 +1,4 @@
+import 'package:cross_platform_mobile_app_development/features/5_profile/screens/address_list_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/app_constants.dart';
@@ -137,7 +138,10 @@ class _AccountPageState extends State<AccountPage> {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const OrderHistoryScreen()));
             }
           ),
-          _buildMenuItem(icon: Icons.location_on, title: "Sổ địa chỉ", onTap: () {}),
+          _buildMenuItem(icon: Icons.location_on, title: "Sổ địa chỉ", onTap: () {
+            // Dẫn tới màn hình quản lý địa chỉ
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressListScreen()));
+          }),
           _buildMenuItem(icon: Icons.settings, title: "Cài đặt", onTap: () {}),
           
           const Divider(height: 30),

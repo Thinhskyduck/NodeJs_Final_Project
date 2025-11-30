@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:cross_platform_mobile_app_development/core/constants/app_constants.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -35,7 +36,7 @@ class _ProductCatalogState extends State<ProductCatalog> {
     if (kIsWeb) {
       print("--- WEB WARNING ---");
       print(
-          "Make sure the API server (https://tteaqwe3g9.ap-southeast-1.awsapprunner.com)");
+          "Make sure the API server ${AppConstants.baseUrl}");
       print(
           "is configured with correct CORS headers (Access-Control-Allow-Origin)");
       print(
@@ -82,42 +83,31 @@ class _ProductCatalogState extends State<ProductCatalog> {
     try {
       // Gọi API với _searchQuery
       final response = await http
-          .get(
-            Uri.parse(
-                'https://tteaqwe3g9.ap-southeast-1.awsapprunner.com/api/v1/products?skip=$_skip&limit=$_limit&category_id=${widget.categoryId}${_searchQuery.isNotEmpty ? '&search=${Uri.encodeComponent(_searchQuery)}' : ''}'),
-          )
-          .timeout(const Duration(seconds: 30));
+        .get(
+          Uri.parse(
+              '${AppConstants.baseUrl}/products?page=${(_skip ~/ _limit) + 1}&limit=$_limit&category=${widget.categoryId}${_searchQuery.isNotEmpty ? '&keyword=${Uri.encodeComponent(_searchQuery)}' : ''}'),
+        )
+        .timeout(const Duration(seconds: 30));
 
       if (!mounted) return;
 
       if (response.statusCode == 200) {
         final List<dynamic> productsJson =
             jsonDecode(utf8.decode(response.bodyBytes));
-        if (productsJson is List) {
-          final newProducts = productsJson.cast<Map<String, dynamic>>();
-          setState(() {
-            // List<Map<String, dynamic>> productsToAdd = newProducts;
-            // if (_searchQuery.isNotEmpty) {
-            //   productsToAdd = newProducts.where((p) => _matchesSearch(p)).toList();
-            // }
-            if (isSearch)
-              _products.clear(); // Xóa sản phẩm cũ nếu là tìm kiếm mới
-            _products.addAll(newProducts);
-            _skip += newProducts.length;
-            _hasMore = newProducts.length == _limit;
-            _isLoading = false;
-          });
-        } else {
-          if (!mounted) return;
-          setState(() {
-            _hasMore = false;
-            _isLoading = false;
-            if (_products.isEmpty) {
-              _errorMessage = 'Received unexpected data format from server.';
-            }
-          });
-        }
-      } else {
+        final newProducts = productsJson.cast<Map<String, dynamic>>();
+        setState(() {
+          // List<Map<String, dynamic>> productsToAdd = newProducts;
+          // if (_searchQuery.isNotEmpty) {
+          //   productsToAdd = newProducts.where((p) => _matchesSearch(p)).toList();
+          // }
+          if (isSearch)
+            _products.clear(); // Xóa sản phẩm cũ nếu là tìm kiếm mới
+          _products.addAll(newProducts);
+          _skip += newProducts.length;
+          _hasMore = newProducts.length == _limit;
+          _isLoading = false;
+        });
+            } else {
         if (!mounted) return;
         setState(() {
           _hasMore = false;
@@ -188,7 +178,7 @@ class _ProductCatalogState extends State<ProductCatalog> {
   // }
 
   String _getThumbnailUrl(dynamic thumbnailUrl) {
-    const baseUrl = 'https://tteaqwe3g9.ap-southeast-1.awsapprunner.com';
+    final String baseUrl = AppConstants.baseUrl;
     if (thumbnailUrl is String &&
         thumbnailUrl.isNotEmpty &&
         thumbnailUrl != 'string') {

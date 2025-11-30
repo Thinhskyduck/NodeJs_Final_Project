@@ -1,3 +1,4 @@
+import 'package:cross_platform_mobile_app_development/core/constants/app_constants.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -111,7 +112,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
           try {
             // Gọi API lấy chi tiết variant (bao gồm product_name)
             final response = await http.get(
-              Uri.parse('https://tteaqwe3g9.ap-southeast-1.awsapprunner.com/api/v1/variants/$variantId/price'),
+              Uri.parse('${AppConstants.baseUrl}/variants/$variantId/price'),
               headers: {'accept': 'application/json'},
             ).timeout(const Duration(seconds: 10));
 
@@ -208,7 +209,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
     print("Checkout Request Body: ${jsonEncode(checkoutRequestBody)}");
 
     try {
-      const String checkoutApiUrl = 'https://tteaqwe3g9.ap-southeast-1.awsapprunner.com/api/v1/orders/checkout';
+      final String checkoutApiUrl = '${AppConstants.baseUrl}/orders';
       final response = await http.post(
         Uri.parse(checkoutApiUrl),
         headers: {

@@ -1,3 +1,5 @@
+import 'package:cross_platform_mobile_app_development/core/constants/app_constants.dart';
+
 import 'login.dart'; // Keep your actual path
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -35,8 +37,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse(
-            'https://tteaqwe3g9.ap-southeast-1.awsapprunner.com/api/v1/auth/password-reset'),
+        Uri.parse('${AppConstants.baseUrl}/users/forgot-password'),
         headers: {
           'accept': 'application/json',
           'Content-Type': 'application/json',

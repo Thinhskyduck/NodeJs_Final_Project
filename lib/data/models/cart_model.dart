@@ -20,10 +20,31 @@ class CartItem {
   });
 
   factory CartItem.fromJson(Map<String, dynamic> json) {
+    // Xử lý an toàn cho variantId
+    String vId = '';
+    if (json['variant'] != null) {
+      if (json['variant'] is String) {
+        vId = json['variant'];
+      } else if (json['variant'] is Map) {
+        // Nếu backend đã populate variant thành object, lấy _id từ object đó
+        vId = json['variant']['_id'] ?? json['variant']['id'] ?? '';
+      }
+    }
+
+    // Xử lý an toàn cho productId
+    String pId = '';
+    if (json['product'] != null) {
+      if (json['product'] is String) {
+        pId = json['product'];
+      } else if (json['product'] is Map) {
+        pId = json['product']['_id'] ?? json['product']['id'] ?? '';
+      }
+    }
+
     return CartItem(
       itemId: json['_id'] ?? '',
-      productId: json['product'] ?? '',
-      variantId: json['variant'] ?? '',
+      productId: pId,
+      variantId: vId,
       name: json['name'] ?? 'Sản phẩm',
       quantity: json['quantity'] ?? 1,
       price: json['price'] ?? 0,
