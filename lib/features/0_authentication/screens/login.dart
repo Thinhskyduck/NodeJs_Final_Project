@@ -1,8 +1,9 @@
 import 'dart:async';
 
+import 'package:cross_platform_mobile_app_development/core/constants/app_constants.dart';
 import 'package:cross_platform_mobile_app_development/features/1_home/screens/home_screen.dart'; // Giữ đường dẫn thực tế của bạn
 import 'package:flutter/material.dart';
-
+import 'package:url_launcher/url_launcher.dart';
 import '../../../data/services/api_service.dart'; // Import Service mới
 import 'reset_password.dart'; // Giữ đường dẫn thực tế của bạn
 import 'signup.dart'; // Giữ đường dẫn thực tế của bạn
@@ -212,7 +213,30 @@ class _LoginState extends State<Login> {
                       ),
                     ),
                     const SizedBox(height: 30),
+                    // Nút Google Login
+                    SizedBox(
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          // URL của Backend API bắt đầu luồng Google Auth
+                          // Lưu ý: Đổi localhost thành URL backend thật của bạn nếu deploy
+                          final url = Uri.parse('${AppConstants.baseUrl.replaceAll("/api", "")}/api/auth/google');
+                          
+                          // Mở link trên chính tab hiện tại (webOnlyWindowName: '_self')
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(url, webOnlyWindowName: '_self');
+                          }
+                        },
+                        icon: const Icon(Icons.g_mobiledata, size: 30, color: Colors.red),
+                        label: const Text("Đăng nhập bằng Google", style: TextStyle(fontSize: 16)),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
 
+                    // Dòng đăng ký
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [

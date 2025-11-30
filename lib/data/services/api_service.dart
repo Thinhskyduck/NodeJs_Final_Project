@@ -86,40 +86,54 @@ class ApiService {
   }
 
   // --- PRODUCTS ---
+  // Trong lib/data/services/api_service.dart
+
   Future<List<Product>> fetchProducts({
     int page = 1,
-    int limit = 10,
+    int limit = 12, // Web nên hiện nhiều hơn (ví dụ 12)
     String? search,
     String? sortBy,
-    int? categoryId,
+    String? categoryId, // Sửa thành String vì MongoID là chuỗi ký tự
+    double? minPrice,   // Thêm tham số lọc giá
+    double? maxPrice,   // Thêm tham số lọc giá
+    String? brand,      // Thêm tham số lọc thương hiệu
   }) async {
-    // 1. Xây dựng Query String (chuỗi tham số trên URL)
+    // 1. Xây dựng Query String
     String queryString = "page=$page&limit=$limit";
     
     if (search != null && search.isNotEmpty) {
-      queryString += "&keyword=$search"; // Backend bạn dùng 'keyword' hay 'search'? Thường là keyword
+      queryString += "&keyword=$search";
     }
     if (sortBy != null && sortBy.isNotEmpty) {
       queryString += "&sort=$sortBy"; 
     }
-    if (categoryId != null) {
+    if (categoryId != null && categoryId.isNotEmpty) {
       queryString += "&category=$categoryId";
     }
+    
+    // --- PHẦN MỚI THÊM: Lọc giá & Brand ---
+    if (minPrice != null) {
+      // Backend dùng: price[gte]=100000
+      queryString += "&price[gte]=${minPrice.toInt()}"; 
+    }
+    if (maxPrice != null) {
+      // Backend dùng: price[lte]=500000
+      queryString += "&price[lte]=${maxPrice.toInt()}";
+    }
+    if (brand != null && brand.isNotEmpty) {
+      // Backend dùng: brand=Dell,HP (có thể chọn nhiều, ở đây demo 1 brand trước)
+      queryString += "&brand=$brand";
+    }
+    // -------------------------------------
 
-    // 2. Gọi API với query string đã tạo
-    // Giả sử baseUrl là 'http://localhost:5000/api'
-    // URL cuối cùng sẽ dạng: .../products?page=1&limit=10&sort=-price
-    final response = await http.get(
-      Uri.parse('${AppConstants.baseUrl}/products?$queryString'), 
-      headers: {'Content-Type': 'application/json'},
-    );
+    final url = Uri.parse('${AppConstants.baseUrl}/products?$queryString');
+    print("Calling API: $url"); // Log để debug xem URL đúng chưa
+
+    final response = await http.get(url, headers: {'Content-Type': 'application/json'});
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       
-      // Tùy cấu trúc backend trả về, thường danh sách nằm trong data['products'] hoặc data['data']
-      // Nếu backend trả trực tiếp List thì dùng: List<dynamic> productsJson = data;
-      // Dưới đây là code an toàn, thử lấy list từ các key phổ biến:
       List<dynamic> productsJson = [];
       if (data is List) {
         productsJson = data;

@@ -84,15 +84,27 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
   Future<void> _addToCart() async {
     if (_product == null || _product!.variants.isEmpty) return;
     
-    String productId = _product!.id;
-    String variantId = _product!.variants[_selectedVariantIndex].id;
-    
-    String name = _product!.name + " - " + _product!.variants[_selectedVariantIndex].name;
-    int price = _product!.variants[_selectedVariantIndex].price;
-    String image = _product!.thumbnailUrl;
+    // 1. Lấy biến thể đang được chọn
+    final selectedVariant = _product!.variants[_selectedVariantIndex];
 
-    bool success = await _cartService.addToCart(productId, variantId, 1, 
-        name: name, price: price, image: image);
+    // 2. Kiểm tra tồn kho (Yêu cầu đồ án)
+    if (selectedVariant.stockQuantity <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Sản phẩm này tạm hết hàng!"), backgroundColor: Colors.red),
+      );
+      return;
+    }
+    
+    // 3. Gọi Service thêm vào giỏ
+    // Lưu ý: selectedVariant.id lúc này đã được Model fix (lấy _id) nên sẽ chính xác
+    bool success = await _cartService.addToCart(
+      _product!.id, 
+      selectedVariant.id, 
+      1, 
+      name: "${_product!.name} (${selectedVariant.name})", // Ghép tên biến thể cho rõ
+      price: selectedVariant.price, 
+      image: _product!.thumbnailUrl
+    );
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -110,10 +122,14 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
     if (_product == null) return const Scaffold(body: Center(child: Text("Sản phẩm không tồn tại")));
 
     final p = _product!;
+    // Lấy biến thể hiện tại để hiển thị giá và kho
     final currentVariant = p.variants.isNotEmpty ? p.variants[_selectedVariantIndex] : null;
+    
     final String displayPrice = currentVariant != null 
         ? NumberFormat("#,##0₫", "vi_VN").format(currentVariant.price)
         : "Liên hệ";
+        
+    final int stock = currentVariant?.stockQuantity ?? 0;
 
     return Scaffold(
       appBar: AppBar(title: Text(p.name)),
@@ -134,32 +150,38 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
             ),
             const SizedBox(height: 20),
             
-            // 2. Tên & Giá & Rating Tổng quan
+            // Tên & Giá
             Text(p.name, style: GoogleFonts.roboto(fontSize: 24, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                Text(displayPrice, style: GoogleFonts.roboto(fontSize: 20, color: Colors.red, fontWeight: FontWeight.bold)),
-                const Spacer(),
-                const Icon(Icons.star, color: Colors.amber, size: 20),
-                Text(" ${p.averageRating.toStringAsFixed(1)} (${p.numReviews} đánh giá)", style: const TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
             
+            // HIỂN THỊ GIÁ THEO BIẾN THỂ
+            Text(displayPrice, style: GoogleFonts.roboto(fontSize: 24, color: Colors.red, fontWeight: FontWeight.bold)),
+            
+            // HIỂN THỊ TỒN KHO (Yêu cầu đồ án)
+            Text("Kho: $stock sản phẩm", style: TextStyle(color: stock > 0 ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
+
             const SizedBox(height: 20),
             
-            // 3. Chọn Variant
+            // CHỌN BIẾN THỂ (Chips)
             if (p.variants.isNotEmpty) ...[
-              const Text("Chọn phiên bản:", style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text("Cấu hình:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
               Wrap(
-                spacing: 8,
+                spacing: 10,
                 children: List.generate(p.variants.length, (index) {
                   final variant = p.variants[index];
                   final isSelected = _selectedVariantIndex == index;
                   return ChoiceChip(
-                    label: Text("${variant.name} - ${NumberFormat("#,##0").format(variant.price)}"),
+                    label: Text(variant.name),
                     selected: isSelected,
-                    onSelected: (val) => setState(() => _selectedVariantIndex = index),
+                    selectedColor: Colors.blue.shade100,
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.blue.shade900 : Colors.black,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal
+                    ),
+                    onSelected: (val) {
+                      if (val) setState(() => _selectedVariantIndex = index);
+                    },
                   );
                 }),
               )
@@ -191,12 +213,16 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.all(16.0),
         child: ElevatedButton(
-          onPressed: _addToCart,
+          // Disable nút nếu hết hàng
+          onPressed: stock > 0 ? _addToCart : null, 
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue,
+            backgroundColor: stock > 0 ? Colors.blue : Colors.grey,
             padding: const EdgeInsets.symmetric(vertical: 15)
           ),
-          child: const Text("THÊM VÀO GIỎ HÀNG", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          child: Text(
+            stock > 0 ? "THÊM VÀO GIỎ HÀNG" : "TẠM HẾT HÀNG", 
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+          ),
         ),
       ),
     );
