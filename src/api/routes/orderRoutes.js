@@ -8,7 +8,7 @@ const {
   getOrderById,
   getOrders,
   updateOrderStatus,
-  createGuestOrder 
+  createGuestOrder, // Import thêm hàm này
 } = require('../controllers/orderController');
 // Import một lần duy nhất
 const { protect, admin } = require('../middlewares/authMiddleware');
@@ -23,7 +23,59 @@ const { protect, admin } = require('../middlewares/authMiddleware');
 
 
 // =================================================================
-// USER ROUTES (Các route dành cho người dùng thông thường)
+// GUEST ROUTES (Khách vãng lai - Không cần Token)
+// =================================================================
+
+/**
+ * @swagger
+ * /orders/guest:
+ *   post:
+ *     summary: Create a new order for Guest
+ *     tags: [Orders]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, fullName, shippingAddress, paymentMethod, cartItems]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "guest@example.com"
+ *               fullName:
+ *                 type: string
+ *                 example: "Guest User"
+ *               shippingAddress:
+ *                 type: object
+ *                 properties:
+ *                   addressLine: { type: string, example: "123 Street" }
+ *                   city: { type: string, example: "Hanoi" }
+ *                   postalCode: { type: string, example: "10000" }
+ *                   country: { type: string, example: "VN" }
+ *               paymentMethod:
+ *                 type: string
+ *                 example: "COD"
+ *               discountCode:
+ *                 type: string
+ *                 description: "Optional discount code"
+ *                 example: "SALE50"
+ *               cartItems:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     product: { type: string, example: "691d84f5113a4beb7f0fc494" }
+ *                     variant: { type: string, example: "691d84f5113a4beb7f0fc495" }
+ *                     quantity: { type: integer, example: 1 }
+ *     responses:
+ *       201:
+ *         description: Guest order created
+ */
+router.post('/guest', createGuestOrder);
+
+// =================================================================
+// USER ROUTES (Cần đăng nhập - Có Token)
 // =================================================================
 
 /**
@@ -38,7 +90,6 @@ const { protect, admin } = require('../middlewares/authMiddleware');
  *       200:
  *         description: A list of the user's orders
  */
-// Route này phải được đặt TRƯỚC '/:id'
 router.get('/myorders', protect, getMyOrders);
 
 
@@ -46,7 +97,8 @@ router.get('/myorders', protect, getMyOrders);
  * @swagger
  * /orders:
  *   post:
- *     summary: Create a new order (USER)
+ *     summary: Create a new order (Logged in User)
+ *     description: "Creates order from User's Cart in Database. No items array needed in body."
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
@@ -61,16 +113,19 @@ router.get('/myorders', protect, getMyOrders);
  *               shippingAddress:
  *                 type: object
  *                 properties:
- *                   addressLine: { type: string }
- *                   city: { type: string }
- *                   postalCode: { type: string }
- *                   country: { type: string }
+ *                   addressLine: { type: string, example: "456 Tran Hung Dao" }
+ *                   city: { type: string, example: "Ha Noi" }
+ *                   postalCode: { type: string, example: "10000" }
+ *                   country: { type: string, example: "VN" }
  *               paymentMethod:
  *                 type: string
  *                 example: "COD"
  *               discountCode:
  *                 type: string
- *                 example: "SALE10"
+ *                 example: "SALE50"
+ *               useLoyaltyPoints:
+ *                 type: boolean
+ *                 example: false
  *     responses:
  *       201:
  *         description: Order created successfully
@@ -117,11 +172,22 @@ router.get('/:id', protect, getOrderById);
  *         name: page
  *         schema:
  *           type: integer
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: "Format: YYYY-MM-DD"
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: "Format: YYYY-MM-DD"
  *     responses:
  *       200:
  *         description: A list of all orders
  */
- // Tôi đã đổi tên route này thành /admin/all để tránh xung đột với route GET /:id và POST /
 router.get('/admin/all', protect, admin, getOrders);
 
 
@@ -155,38 +221,5 @@ router.get('/admin/all', protect, admin, getOrders);
  */
 router.put('/:id/status', protect, admin, updateOrderStatus);
 
-/**
- * @swagger
- * /orders/guest:
- *   post:
- *     summary: Create a new order for a guest user
- *     tags: [Orders]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *                email: { type: string }
- *                fullName: { type: string }
- *                shippingAddress: { type: object }
- *                paymentMethod: { type: string }
- *                cartItems:
- *                  type: array
- *                  items:
- *                     type: object
- *                     properties:
- *                         name: { type: string }
- *                         quantity: { type: number }
- *                         image: { type: string }
- *                         price: { type: number }
- *                         product: { type: string }
- *                         variant: { type: string }
- *     responses:
- *       201:
- *         description: Guest order created successfully
- */
-router.post('/guest', createGuestOrder);
 
 module.exports = router;

@@ -8,6 +8,8 @@ const discountSchema = new mongoose.Schema({
     unique: true,
     uppercase: true,
     trim: true,
+    minlength: [5, 'Mã giảm giá phải có đúng 5 ký tự'], 
+    maxlength: [5, 'Mã giảm giá phải có đúng 5 ký tự'], 
   },
   value: {
     type: Number, // Giá trị giảm giá, có thể là % hoặc số tiền cụ thể
@@ -18,9 +20,10 @@ const discountSchema = new mongoose.Schema({
     enum: ['percentage', 'fixed'],
     default: 'fixed'
   },
-  maxUses: { // Số lần sử dụng tối đa
-    type: Number,
-    required: true,
+  maxUses: { 
+      type: Number, 
+      required: true,
+      max: [10, 'Giới hạn sử dụng tối đa là 10 lần']
   },
   timesUsed: { // Số lần đã sử dụng
     type: Number,

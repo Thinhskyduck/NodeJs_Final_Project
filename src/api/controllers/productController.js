@@ -1,6 +1,7 @@
 // src/api/controllers/productController.js
 
 const Product = require('../models/productModel');
+const jwt = require('jsonwebtoken');
 const Category = require('../models/categoryModel'); // Cần để kiểm tra category
 
 // @desc    Tạo sản phẩm mới
@@ -182,54 +183,92 @@ const deleteProduct = async (req, res) => {
 // @route   POST /api/products/:id/reviews
 // @access  Private (Cần đăng nhập)
 const createProductReview = async (req, res) => {
-  const { rating, comment } = req.body;
+  const { rating, comment, guestName } = req.body;
+  const productId = req.params.id;
 
   try {
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(productId);
+    if (!product) return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
 
-    if (product) {
-      // Kiểm tra xem người dùng này đã đánh giá sản phẩm này chưa
-      const alreadyReviewed = product.reviews.find(
-        (r) => r.user.toString() === req.user._id.toString()
-      );
-
-      if (alreadyReviewed) {
-        return res.status(400).json({ message: 'Bạn đã đánh giá sản phẩm này rồi' });
-      }
-
-      // Tạo object review mới
-      const review = {
-        user: req.user._id,
-        rating: Number(rating),
-        comment,
-      };
-
-      // Thêm review mới vào mảng reviews của sản phẩm
-      product.reviews.push(review);
-
-      // Cập nhật lại số lượng đánh giá và điểm trung bình
-      product.numReviews = product.reviews.length;
-      product.averageRating =
-        product.reviews.reduce((acc, item) => item.rating + acc, 0) /
-        product.reviews.length;
-
-      // Lưu lại sản phẩm vào DB
-      await product.save();
-
-      // Lấy instance io
-      const io = req.app.get('socketio');
-      // Bắn sự kiện 'new_review' kèm theo productId và data review mới
-      io.emit('new_review', {
-          productId: req.params.id,
-          review: review, // review vừa tạo
-          newAverageRating: product.averageRating,
-          newNumReviews: product.numReviews
-      });
-
-      res.status(201).json({ message: 'Đánh giá đã được thêm' });
-    } else {
-      res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+    let user = null;
+    
+    // 1. Kiểm tra xem có Token không (Soft Auth)
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+        try {
+            const token = req.headers.authorization.split(' ')[1];
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            user = await User.findById(decoded.id);
+        } catch (e) {
+            // Token lỗi -> Coi như Guest
+        }
     }
+
+    // 2. Logic phân quyền
+    if (user) {
+        // --- LOGIC CHO USER ĐÃ LOGIN ---
+        // User bắt buộc phải có rating (theo đề bài)
+        if (!rating || rating < 1 || rating > 5) {
+            return res.status(400).json({ message: 'Thành viên vui lòng đánh giá sao (1-5)' });
+        }
+
+        // Check xem đã đánh giá chưa
+        const alreadyReviewed = product.reviews.find(
+            (r) => r.user && r.user.toString() === user._id.toString()
+        );
+        if (alreadyReviewed) {
+            return res.status(400).json({ message: 'Bạn đã đánh giá sản phẩm này rồi' });
+        }
+
+        const review = {
+            user: user._id,
+            name: user.fullName, // Hoặc dùng populate sau này
+            rating: Number(rating),
+            comment,
+        };
+        product.reviews.push(review);
+
+    } else {
+        // --- LOGIC CHO GUEST ---
+        // Guest KHÔNG được đánh giá sao (Rating = 0 hoặc bỏ qua tính toán)
+        if (rating && Number(rating) > 0) {
+            return res.status(400).json({ message: 'Khách vãng lai chỉ được bình luận, không được đánh giá sao.' });
+        }
+        if (!guestName) {
+             return res.status(400).json({ message: 'Vui lòng nhập tên của bạn' });
+        }
+
+        const review = {
+            user: null, // Không có user ID
+            guestName: guestName,
+            rating: 0, // Mặc định 0
+            comment,
+        };
+        product.reviews.push(review);
+    }
+
+    // 3. Tính lại điểm trung bình (Chỉ tính những review có rating > 0)
+    const ratedReviews = product.reviews.filter(r => r.rating > 0);
+    if (ratedReviews.length > 0) {
+        product.numReviews = ratedReviews.length;
+        product.averageRating =
+            ratedReviews.reduce((acc, item) => item.rating + acc, 0) / ratedReviews.length;
+    }
+
+    await product.save();
+
+    // Socket Realtime
+    const io = req.app.get('socketio');
+    if (io) {
+        io.emit('new_review', {
+            productId: productId,
+            review: product.reviews[product.reviews.length - 1],
+            newAverageRating: product.averageRating,
+            newNumReviews: product.numReviews
+        });
+    }
+
+    res.status(201).json({ message: 'Bình luận đã được gửi' });
+
   } catch (error) {
     res.status(500).json({ message: 'Lỗi máy chủ', error: error.message });
   }

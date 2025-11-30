@@ -7,13 +7,16 @@ const reviewSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.ObjectId,
       ref: 'User',
-      required: true,
+      required: false, // <-- Cho phép null nếu là Guest
+    },
+    guestName: { // <-- Thêm trường này cho Guest
+        type: String,
+        required: false 
     },
     rating: {
       type: Number,
-      required: true,
-      min: 1,
-      max: 5,
+      required: true, 
+      default: 0, // Guest comment thì rating = 0 (coi như không đánh giá)
     },
     comment: {
       type: String,

@@ -9,38 +9,43 @@ const { sendResetPasswordEmail } = require('../../utils/emailService');
 // @route   POST /api/users/register
 // @access  Public
 const registerUser = async (req, res) => {
-  // 1. Lấy thông tin từ request body
-  const { fullName, email, password } = req.body;
+  // Thêm shippingAddress vào destructuring
+  const { fullName, email, password, shippingAddress } = req.body;
 
-  // 2. Validate dữ liệu đầu vào cơ bản
-  if (!fullName || !email || !password) {
-    return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin' });
+  // Validate: Bắt buộc phải có shippingAddress
+  if (!fullName || !email || !password || !shippingAddress) {
+    return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin (bao gồm địa chỉ)' });
   }
 
   try {
-    // 3. Kiểm tra xem email đã tồn tại trong DB chưa
     const userExists = await User.findOne({ email });
-
     if (userExists) {
       return res.status(400).json({ message: 'Email đã tồn tại' });
     }
 
-    // 4. Tạo người dùng mới
-    // (Lưu ý: Mật khẩu sẽ được tự động mã hóa nhờ middleware trong userModel)
+    // Tạo user với địa chỉ đầu tiên
     const user = await User.create({
       fullName,
       email,
       password,
+      // Chuyển shippingAddress thành format của mảng addresses trong Model
+      // Giả sử shippingAddress gửi lên là string hoặc object, ta lưu vào mảng
+      addresses: [{ 
+          addressLine: typeof shippingAddress === 'string' ? shippingAddress : shippingAddress.addressLine,
+          city: shippingAddress.city || '',
+          postalCode: shippingAddress.postalCode || '',
+          country: shippingAddress.country || 'Vietnam',
+          isDefault: true 
+      }]
     });
 
-    // 5. Nếu tạo thành công, trả về thông tin người dùng (không bao gồm mật khẩu)
     if (user) {
       res.status(201).json({
         _id: user._id,
         fullName: user.fullName,
         email: user.email,
         role: user.role,
-        // Chúng ta sẽ thêm token ở đây trong các bước sau
+        // Không trả về token ngay nếu muốn bắt login lại, hoặc trả về luôn tùy bạn
       });
     } else {
       res.status(400).json({ message: 'Dữ liệu người dùng không hợp lệ' });

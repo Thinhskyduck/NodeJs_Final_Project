@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { 
-    validateDiscount, // Import hàm mới
+    validateDiscount, 
     createDiscount, 
     getDiscounts, 
     deleteDiscount 
@@ -13,18 +13,14 @@ const { protect, admin } = require('../middlewares/authMiddleware');
  * @swagger
  * tags:
  *   name: Discounts
- *   description: Discount code management
+ *   description: Discount management
  */
-
-// ========================================================
-// PUBLIC ROUTES (Ai cũng dùng được, kể cả Guest)
-// ========================================================
 
 /**
  * @swagger
  * /discounts/validate:
  *   post:
- *     summary: Validate a discount code before checkout
+ *     summary: Validate a discount code (Public)
  *     tags: [Discounts]
  *     requestBody:
  *       required: true
@@ -34,51 +30,27 @@ const { protect, admin } = require('../middlewares/authMiddleware');
  *             type: object
  *             required: [code, cartTotal]
  *             properties:
- *               code:
- *                 type: string
- *                 example: "SALE50"
- *               cartTotal:
- *                 type: number
- *                 example: 500000
+ *               code: { type: string, example: "SALE50" }
+ *               cartTotal: { type: number, example: 200000 }
  *     responses:
- *       200:
- *         description: Valid coupon
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                  valid: { type: boolean }
- *                  discountAmount: { type: number }
- *                  newTotal: { type: number }
- *       404:
- *         description: Invalid code
+ *       200: { description: Valid }
+ *       404: { description: Invalid }
  */
 router.post('/validate', validateDiscount);
 
-
-// ========================================================
-// ADMIN ROUTES (Chỉ Admin mới được thêm/xóa mã)
-// ========================================================
-
-// Áp dụng bảo vệ cho các route bên dưới dòng này
 router.use(protect, admin);
 
 /**
  * @swagger
  * /discounts:
  *   get:
- *     summary: Get all discount codes (Admin)
+ *     summary: Get all discounts (Admin)
  *     tags: [Discounts]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200: { description: List of discounts }
+ *     responses: { 200: { description: List } }
  *   post:
- *     summary: Create a new discount code (Admin)
+ *     summary: Create discount (Admin)
  *     tags: [Discounts]
- *     security:
- *       - bearerAuth: []
+ *     description: "Note: Code must be exactly 5 characters. Max uses limit is 10."
  *     requestBody:
  *       required: true
  *       content:
@@ -87,33 +59,24 @@ router.use(protect, admin);
  *             type: object
  *             required: [code, value, maxUses]
  *             properties:
- *               code: { type: string }
- *               value: { type: number }
- *               maxUses: { type: number }
- *               discountType: { type: string, enum: [fixed, percentage] }
+ *               code: 
+ *                 type: string
+ *                 description: "Must be exactly 5 characters"
+ *                 example: "ABCDE"
+ *               value: { type: number, example: 50000 }
+ *               maxUses: 
+ *                 type: number
+ *                 description: "Max 10 uses per code"
+ *                 example: 10
+ *               discountType: { type: string, enum: [fixed, percentage], default: fixed }
  *     responses:
- *       201: { description: Discount created }
+ *       201: { description: Created }
+ *       400: { description: Validation Error }
  */
 router.route('/')
     .get(getDiscounts)
     .post(createDiscount);
 
-/**
- * @swagger
- * /discounts/{id}:
- *   delete:
- *     summary: Delete a discount code (Admin)
- *     tags: [Discounts]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200: { description: Discount deleted }
- */
 router.route('/:id').delete(deleteDiscount);
 
 module.exports = router;

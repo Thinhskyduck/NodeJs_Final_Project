@@ -201,45 +201,40 @@ router.route('/:id')
  * @swagger
  * /products/{id}/reviews:
  *   post:
- *     summary: Create a new review for a product
+ *     summary: Create a review (User or Guest)
  *     tags: [Products]
- *     security:
- *       - bearerAuth: []
+ *     description: "LOGIC: \n- Logged-in User (Header 'Authorization'): Must provide 'rating' (1-5) and 'comment'. \n- Guest (No Header): Must provide 'guestName' and 'comment'. Rating is ignored (0)."
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: The ID of the product to review
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - rating
- *               - comment
+ *             required: [comment]
  *             properties:
  *               rating:
  *                 type: number
- *                 description: "Rating from 1 to 5"
+ *                 description: "Required for USERS (1-5). Ignored for GUESTS."
  *                 example: 5
  *               comment:
  *                 type: string
- *                 description: "The review comment"
- *                 example: "Sản phẩm tuyệt vời!"
+ *                 example: "Sản phẩm tốt!"
+ *               guestName:
+ *                 type: string
+ *                 description: "Required for GUESTS."
+ *                 example: "Khách Vãng Lai"
  *     responses:
  *       201:
  *         description: Review added successfully
  *       400:
- *         description: Bad request (e.g., product already reviewed)
- *       401:
- *         description: Not authorized
- *       404:
- *         description: Product not found
+ *         description: Bad request (Missing fields or logic error)
  */
-router.route('/:id/reviews').post(protect, createProductReview);
+router.post('/:id/reviews', createProductReview)
 
 module.exports = router;

@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # 1. Database MongoDB
+  mongo:
+    image: mongo:latest
+    container_name: ecom_mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - ecom_network
+
+  # 2. RabbitMQ (Message Broker)
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ecom_rabbitmq
+    ports:
+      - "5672:5672" # Port chính để app kết nối
+      - "15672:15672" # Port giao diện quản lý (truy cập localhost:15672)
+    networks:
+      - ecom_network
+
+  # 3. Backend API
+  backend:
+    build: .
+    container_name: ecom_backend
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      # Lưu ý: 'mongo' và 'rabbitmq' là tên service bên trên
+      - MONGODB_URI=mongodb://mongo:27017/eCommerceDB 
+      - RABBITMQ_URI=amqp://rabbitmq:5672
+      - JWT_SECRET=chaunguyenkhanhtrinh293
+      # Thay bằng thông tin email thật của bạn
+      - EMAIL_USERNAME=${EMAIL_USERNAME}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - FRONTEND_URL=http://localhost:3000
+    depends_on:
+      - mongo
+      - rabbitmq
+    networks:
+      - ecom_network
+    command: npm run dev # Chạy server
+
+  # 4. Email Worker (Service chạy ngầm để gửi mail)
+  worker:
+    build: . # Dùng chung Dockerfile với backend
+    container_name: ecom_worker
+    environment:
+      - RABBITMQ_URI=amqp://rabbitmq:5672
+      - EMAIL_USERNAME=${EMAIL_USERNAME}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+    depends_on:
+      - rabbitmq
+    networks:
+      - ecom_network
+    command: node src/workers/emailWorker.js # Chạy lệnh riêng cho worker
+
+volumes:
+  mongo_data:
+
+networks:
+  ecom_network:
+    driver: bridge

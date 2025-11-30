@@ -28,29 +28,40 @@ const { protect } = require('../middlewares/authMiddleware');
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - fullName
- *               - email
- *               - password
+ *             required: [fullName, email, password, shippingAddress]
  *             properties:
  *               fullName:
  *                 type: string
- *                 example: "Châu Nguyễn Khánh Trình"
+ *                 example: "Nguyen Van A"
  *               email:
  *                 type: string
  *                 format: email
- *                 example: "khantrinh293@gmail.com"
+ *                 example: "nguyenvana@gmail.com"
  *               password:
  *                 type: string
  *                 format: password
- *                 example: "123456"
+ *                 example: "password123"
+ *               shippingAddress:
+ *                 type: object
+ *                 required: [addressLine, city, postalCode, country]
+ *                 properties:
+ *                   addressLine:
+ *                     type: string
+ *                     example: "19 Nguyen Huu Tho"
+ *                   city:
+ *                     type: string
+ *                     example: "Ho Chi Minh"
+ *                   postalCode:
+ *                     type: string
+ *                     example: "70000"
+ *                   country:
+ *                     type: string
+ *                     example: "Vietnam"
  *     responses:
  *       201:
- *         description: User created successfully
+ *         description: User registered successfully
  *       400:
- *         description: Bad request (e.g., email already exists, missing fields)
- *       500:
- *         description: Internal server error
+ *         description: Bad request
  */
 router.post('/register', registerUser);
 
