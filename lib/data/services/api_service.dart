@@ -420,4 +420,75 @@ class ApiService {
       return false;
     }
   }
+
+  // --- DISCOUNT ---
+  Future<Map<String, dynamic>> validateDiscount(String code, int totalAmount) async {
+    try {
+      // API này Public (Khách cũng dùng được)
+      final response = await http.post(
+        Uri.parse('${AppConstants.baseUrl}/discounts/validate'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: jsonEncode({
+          'code': code,
+          'cartTotal': totalAmount
+        }),
+      );
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      if (response.statusCode == 200) {
+        return {
+          'valid': true,
+          'discountAmount': data['discountAmount'], // Server trả về số tiền được giảm
+          'message': 'Áp dụng mã thành công!'
+        };
+      } else {
+        return {
+          'valid': false, 
+          'discountAmount': 0, 
+          'message': data['message'] ?? 'Mã không hợp lệ'
+        };
+      }
+    } catch (e) {
+      return {'valid': false, 'discountAmount': 0, 'message': 'Lỗi kiểm tra mã: $e'};
+    }
+  }
+
+  // --- CATEGORIES ---
+  Future<List<Map<String, dynamic>>> getCategories() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${AppConstants.baseUrl}/categories'),
+        headers: await _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      print('Get categories error: $e');
+      return [];
+    }
+  }
+
+  // --- HELPER FETCH THEO TIÊU CHÍ ---
+  // Lấy sản phẩm mới nhất (Sort by createdAt desc)
+  Future<List<Product>> fetchNewArrivals() async {
+    return await fetchProducts(limit: 8, sortBy: '-createdAt');
+  }
+
+  // Lấy sản phẩm nổi bật/bán chạy (Tạm thời lấy theo nhiều review nhất hoặc rating cao nhất)
+  Future<List<Product>> fetchBestSellers() async {
+    return await fetchProducts(limit: 8, sortBy: '-numReviews');
+  }
+
+  // Lấy sản phẩm theo tên danh mục (Laptop, Monitor...)
+  // Lưu ý: Cần ID danh mục, nhưng để tiện ta có thể search theo keyword nếu chưa có ID
+  Future<List<Product>> fetchProductsByCategory(String categoryId, {int limit = 8}) async {
+    return await fetchProducts(limit: limit, categoryId: categoryId);
+  }
 }

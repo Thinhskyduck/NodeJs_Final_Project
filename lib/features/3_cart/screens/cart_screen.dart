@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../data/models/cart_model.dart';
 import '../../../data/services/api_service.dart';
-import '../../4_checkout/screens/check_out_infor_screen.dart'; 
-import '../../4_checkout/screens/checkout_screen.dart'; 
+import '../../4_checkout/screens/check_out_infor_screen.dart';  
 import '../../../data/services/cart_service.dart';
+ // Để lấy thông tin user
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -171,22 +171,42 @@ class _CartScreenState extends State<CartScreen> {
             ],
           ),
           ElevatedButton(
-            onPressed: () {
-              if (_items.isNotEmpty) { // Sửa: Kiểm tra _items
-                // Truyền danh sách item và tổng tiền sang Checkout
-                Navigator.push(context, MaterialPageRoute(builder: (_) => CheckoutScreen(
-                  cartItems: _items, // Sửa: Truyền _items
-                  totalPrice: _totalPrice, // Sửa: Truyền _totalPrice
-                )));
+            onPressed: () async {
+              if (_items.isNotEmpty) {
+                // 1. Hiển thị loading nhẹ hoặc đợi một chút
+                final apiService = ApiService();
+                final user = await apiService.getUserProfile();
+
+                if (!context.mounted) return;
+
+                // 2. Chuyển sang màn hình Nhập thông tin (CheckoutInfoScreen)
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CheckoutInfoScreen(
+                      // Nếu user null (Khách) -> gửi ID rỗng hoặc xử lý bên kia
+                      userId: user?.id ?? "", 
+                      currentUserData: user != null
+                          ? {
+                              'full_name': user.fullName,
+                              'email': user.email,
+                              'phone': '', // User model hiện tại chưa có phone, để trống user tự nhập
+                            }
+                          : null,
+                    ),
+                  ),
+                );
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Giỏ hàng trống")));
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Giỏ hàng trống")));
               }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
               padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
             ),
-            child: const Text("THANH TOÁN", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text("THANH TOÁN",
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),

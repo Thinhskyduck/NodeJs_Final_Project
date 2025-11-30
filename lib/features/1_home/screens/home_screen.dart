@@ -49,20 +49,24 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ApiService _apiService = ApiService();
+
+  // --- DATA STATE CHO CÁC SECTION ---
+  List<Product> _newArrivals = [];
+  List<Product> _bestSellers = [];
   
-  // --- DATA STATE ---
-  List<Product> _products = [];
+  // Ví dụ 2 danh mục cụ thể (bạn cần thay ID thật từ MongoDB của bạn vào đây hoặc lấy động)
+  // Tạm thời mình sẽ để list rỗng và load động sau
+  List<Map<String, dynamic>> _categories = []; 
+  Map<String, List<Product>> _categoryProducts = {}; // Map lưu sp theo category id
+
   bool _isLoading = true;
   Map<String, dynamic>? _currentUserData;
 
-  // --- FILTER STATE ---
-  String _searchKeyword = "";
-  String _sortBy = "newest"; // Options: newest, price_asc, price_desc
-
-  // --- BANNER STATE ---
+  // --- BANNER STATE (Giữ nguyên) ---
   final PageController _bannerPageController = PageController();
-  int _currentBannerPage = 0;
   Timer? _bannerTimer;
+  // ... (Giữ nguyên list _slidingBannersData) ...
+
 
   // Dữ liệu Banner (Đã sửa thành Laptop/PC)
   final List<Map<String, dynamic>> _slidingBannersData = [
@@ -112,9 +116,41 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initData() async {
-    await _checkLoginStatus();
-    await _fetchProducts();
+    setState(() => _isLoading = true);
+    await _checkLoginStatus(); // Giữ nguyên hàm này cũ của bạn
+
+    try {
+      // 1. Load danh mục trước
+      final categories = await _apiService.getCategories();
+      
+      // 2. Load New Arrivals & Best Sellers song song
+      final newArrivals = await _apiService.fetchNewArrivals();
+      final bestSellers = await _apiService.fetchBestSellers();
+
+      // 3. Load sản phẩm cho 3 danh mục đầu tiên (nếu có)
+      Map<String, List<Product>> catProds = {};
+      // Lấy 3 danh mục đầu để hiển thị trang chủ (Ví dụ: Laptop, PC, Màn hình...)
+      for (var i = 0; i < categories.length; i++) {
+        final catId = categories[i]['_id'];
+        final products = await _apiService.fetchProductsByCategory(catId);
+        catProds[catId] = products;
+      }
+
+      if (mounted) {
+        setState(() {
+          _categories = categories;
+          _newArrivals = newArrivals;
+          _bestSellers = bestSellers;
+          _categoryProducts = catProds;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print("Lỗi tải trang chủ: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
+
 
   Future<void> _checkLoginStatus() async {
     final user = await _apiService.getUserProfile();
@@ -134,56 +170,55 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // Hàm gọi API lấy sản phẩm (Có Filter & Sort & Search)
-  Future<void> _fetchProducts() async {
-    setState(() => _isLoading = true);
-    try {
-      // Map giá trị dropdown sang tham số backend
-      String? sortParam;
-      if (_sortBy == 'price_asc') sortParam = 'price';
-      if (_sortBy == 'price_desc') sortParam = '-price';
-      // Nếu là 'newest', backend thường mặc định là -createdAt, hoặc có thể truyền '-createdAt'
+  // Future<void> _fetchProducts() async {
+  //   setState(() => _isLoading = true);
+  //   try {
+  //     // Map giá trị dropdown sang tham số backend
+  //     String? sortParam;
+  //     if (_sortBy == 'price_asc') sortParam = 'price';
+  //     if (_sortBy == 'price_desc') sortParam = '-price';
+  //     // Nếu là 'newest', backend thường mặc định là -createdAt, hoặc có thể truyền '-createdAt'
 
-      final products = await _apiService.fetchProducts(
-        limit: 20,
-        search: _searchKeyword.isNotEmpty ? _searchKeyword : null,
-        sortBy: sortParam, // <-- Đây là chỗ sửa lỗi: truyền tham số sortBy
-      );
+  //     final products = await _apiService.fetchProducts(
+  //       limit: 20,
+  //       search: _searchKeyword.isNotEmpty ? _searchKeyword : null,
+  //       sortBy: sortParam, // <-- Đây là chỗ sửa lỗi: truyền tham số sortBy
+  //     );
       
-      if (mounted) {
-        setState(() {
-          _products = products;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      print("Lỗi tải sản phẩm: $e");
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
+  //     if (mounted) {
+  //       setState(() {
+  //         _products = products;
+  //         _isLoading = false;
+  //       });
+  //     }
+  //   } catch (e) {
+  //     print("Lỗi tải sản phẩm: $e");
+  //     if (mounted) setState(() => _isLoading = false);
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
-    final bool isWeb = kIsWeb;
+    final bool isWeb = kIsWeb && MediaQuery.of(context).size.width > 800;
 
     return Scaffold(
       backgroundColor: HomeScreen.themePageBackground,
       appBar: PreferredSize(
-        // FIX LỖI OVERFLOW: Tăng chiều cao từ 100 lên 140
         preferredSize: Size.fromHeight(isWeb ? 140 : 130 + MediaQuery.of(context).padding.top),
         child: Column(
           children: [
             CustomHeader(
-              categories: [],
+              categories: _categories, // Truyền danh mục vào Header
               currentUserData: _currentUserData,
-              cartItemCount: 0,
+              cartItemCount: 0, 
               onCartPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen())),
               onAccountPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountPage())),
               onLogoTap: _initData,
             ),
-            Container(
+             Container(
               color: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: SizedBox( // Bọc TextField trong SizedBox để cố định chiều cao
+              child: SizedBox(
                 height: 45,
                 child: TextField(
                   decoration: InputDecoration(
@@ -195,7 +230,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     contentPadding: const EdgeInsets.symmetric(vertical: 0),
                   ),
                   onSubmitted: (value) {
-                    // Khi search -> Chuyển sang trang Catalog
                     Navigator.push(context, MaterialPageRoute(builder: (_) => CatalogScreen(initialSearch: value)));
                   },
                 ),
@@ -204,66 +238,107 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      body: RefreshIndicator(
-        onRefresh: _initData,
-        child: SingleChildScrollView( // Dùng SingleChildScrollView thay vì CustomScrollView cho đơn giản
-          child: Column(
-            children: [
-              // 1. Banner
-              Container(
-                height: isWeb ? 350 : 180, // Giảm chiều cao banner mobile cho đỡ chiếm chỗ
-                margin: const EdgeInsets.all(16),
-                child: PageView.builder(
-                  controller: _bannerPageController,
-                  itemCount: _slidingBannersData.length,
-                  itemBuilder: (context, index) => _buildBannerItem(_slidingBannersData[index]),
+      
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+          onRefresh: _initData,
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                // 1. Banner (Giữ nguyên)
+                Container(
+                  height: isWeb ? 350 : 180,
+                  margin: const EdgeInsets.all(16),
+                  child: PageView.builder(
+                    controller: _bannerPageController,
+                    itemCount: _slidingBannersData.length, // Sửa lại biến này lấy từ code cũ của bạn
+                    itemBuilder: (context, index) => _buildBannerItem(_slidingBannersData[index]),
+                  ),
                 ),
-              ),
 
-              // 2. Header List Sản phẩm
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("GỢI Ý CHO BẠN", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    TextButton(
-                      onPressed: () {
-                         // Chuyển sang trang Catalog
-                         Navigator.push(context, MaterialPageRoute(builder: (_) => const CatalogScreen()));
-                      },
-                      child: const Text("Xem tất cả >"),
-                    )
-                  ],
-                ),
-              ),
+                // 2. SECTION: SẢN PHẨM MỚI (NEW ARRIVALS)
+                _buildSectionTitle("SẢN PHẨM MỚI VỀ", icon: Icons.new_releases, color: Colors.blue),
+                _buildHorizontalProductList(_newArrivals),
 
-              // 3. List ngang (Horizontal List)
-              SizedBox(
-                height: 280, // Chiều cao cố định cho list ngang
-                child: _isLoading 
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      itemCount: _products.length,
-                      itemBuilder: (context, index) {
-                        return SizedBox(
-                          width: 180, // Chiều rộng mỗi thẻ
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: _buildProductCard(_products[index]),
-                          ),
-                        );
-                      },
-                    ),
-              ),
-              
-              const SizedBox(height: 20),
-              const AppFooter(),
-            ],
+                const SizedBox(height: 20),
+
+                // 3. SECTION: BÁN CHẠY (BEST SELLERS)
+                _buildSectionTitle("BÁN CHẠY NHẤT", icon: Icons.local_fire_department, color: Colors.red),
+                _buildHorizontalProductList(_bestSellers),
+
+                const SizedBox(height: 20),
+
+                // 4. CÁC SECTION DANH MỤC CỤ THỂ
+                // Lặp qua 3 danh mục đầu tiên để hiển thị
+                ..._categories.take(3).map((cat) {
+                  final catId = cat['_id'];
+                  final products = _categoryProducts[catId] ?? [];
+                  if (products.isEmpty) return const SizedBox.shrink();
+
+                  return Column(
+                    children: [
+                      _buildSectionTitle(cat['name'].toString().toUpperCase(), icon: Icons.computer, color: Colors.black87),
+                      _buildHorizontalProductList(products),
+                      const SizedBox(height: 20),
+                    ],
+                  );
+                }).toList(),
+
+                const SizedBox(height: 40),
+                const AppFooter(),
+              ],
+            ),
           ),
         ),
+    );
+  }
+
+  // Widget Tiêu đề Section đẹp hơn
+  Widget _buildSectionTitle(String title, {required IconData icon, required Color color}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 8),
+          Text(
+            title, 
+            style: GoogleFonts.roboto(fontSize: 20, fontWeight: FontWeight.bold, color: HomeScreen.cpsTextBlack)
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: () {
+               Navigator.push(context, MaterialPageRoute(builder: (_) => const CatalogScreen()));
+            },
+            child: const Text("Xem tất cả >"),
+          )
+        ],
+      ),
+    );
+  }
+
+  // Widget List ngang tái sử dụng
+  Widget _buildHorizontalProductList(List<Product> products) {
+    if (products.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Text("Chưa có sản phẩm nào."),
+      );
+    }
+    return SizedBox(
+      height: 290, // Tăng chiều cao xíu để thẻ ko bị lỗi overflow
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        itemCount: products.length,
+        separatorBuilder: (ctx, i) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          return SizedBox(
+            width: 180,
+            child: _buildProductCard(products[index]), // Hàm cũ của bạn
+          );
+        },
       ),
     );
   }

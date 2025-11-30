@@ -1,4 +1,7 @@
 import 'package:cross_platform_mobile_app_development/core/constants/app_constants.dart';
+import 'package:cross_platform_mobile_app_development/data/services/api_service.dart';
+import 'package:cross_platform_mobile_app_development/features/1_home/screens/home_screen.dart';
+import 'package:cross_platform_mobile_app_development/features/5_profile/screens/order_history_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'dart:convert'; // Nếu cần gọi API /checkout
 
 import 'package:cross_platform_mobile_app_development/layout/header.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 // import '../services/api_service.dart'; // Nếu có service cho API /checkout
 
 // Giữ AppColors ở đây hoặc chuyển ra file riêng
@@ -23,13 +27,10 @@ class AppColors {
   static const Color linkBlue = Color(0xFF007AFF);
 }
 
-
-
-
 class CheckoutPaymentScreen extends StatefulWidget {
   final Map<String, dynamic> previewOrderData; // Nhận response từ /preview
   final String? guestEmail; // Nhận từ CheckoutInfoScreen
-  final int userId;
+  final String userId;
   // Nhận từ CheckoutInfoScreen
 
   // final String paymentMethodForCheckout; // Nếu cần truyền riêng
@@ -59,7 +60,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
     {'category_id': 2, 'name': 'Laptop'},
   ];
   Map<String, dynamic>? _currentUserData; // Sẽ lấy một phần từ previewOrderData
-
+  
   // Các thông tin đơn hàng sẽ lấy từ widget.previewOrderData
   // late Map<String, dynamic> _orderSummary;
   // late Map<String, dynamic> _shippingInfo;
@@ -78,19 +79,12 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
   @override
   void initState() {
     super.initState();
-    // _currentUserData có thể được xây dựng một phần từ previewOrderData
-    // hoặc nếu CustomHeader cần nhiều thông tin hơn, bạn cần có cách lấy nó.
-    // Tạm thời để null nếu không có sẵn đầy đủ.
     _currentUserData = {
       'full_name': widget.previewOrderData['recipient_name'] ?? 'Khách hàng',
       'phone': widget.previewOrderData['recipient_phone'] ?? '',
-      'email': widget.guestEmail ?? '', // Sử dụng guestEmail đã truyền
-      // 's_member_rank': widget.previewOrderData['user_rank'] ?? '', // Nếu API trả về
-      'avatar_url': null, // Nếu API trả về
+      'email': widget.guestEmail ?? '',
     };
-    _initializeOrderItemsWithProductNames();
-
-    // Thông tin tóm tắt và giao hàng giờ đã có sẵn trong widget.previewOrderData
+    // KHÔNG gọi API load tên sản phẩm nữa vì dữ liệu đã có đủ
   }
 
   Future<void> _initializeOrderItemsWithProductNames() async {
@@ -160,8 +154,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
   }
 
   // Bỏ _applyDiscountCode vì mã giảm giá đã được áp dụng ở API /preview
-  // void _applyDiscountCode() { ... }
-
+  // void _applyDiscountCode() { ... }  
 
   Future<void> _finalizeOrder() async {
     if (!_agreeToTerms) {
@@ -176,80 +169,100 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       _checkoutErrorMessage = null;
     });
 
-    // Lấy coupon_code:
-    // Ưu tiên 'applied_coupon.code' nếu có, nếu không thì 'coupon_code' (nếu API preview trả về trực tiếp)
-    // Hoặc để rỗng nếu không có coupon nào được áp dụng.
-    String couponCodeForCheckout = "";
-    if (widget.previewOrderData['applied_coupon'] != null &&
-        widget.previewOrderData['applied_coupon'] is Map &&
-        widget.previewOrderData['applied_coupon']['code'] != null) {
-      couponCodeForCheckout = widget.previewOrderData['applied_coupon']['code'] as String;
-    } else if (widget.previewOrderData['coupon_code'] != null && widget.previewOrderData['coupon_code'] is String) {
-      // Trường hợp API preview trả về coupon_code trực tiếp mà người dùng đã nhập (kể cả khi không hợp lệ)
-      // Nếu API checkout yêu cầu coupon code đã nhập, dù hợp lệ hay không, thì dùng trường này.
-      // Nếu API checkout chỉ muốn coupon code HỢP LỆ, thì logic trên với applied_coupon là đủ.
-      // Hiện tại, API preview response mẫu không có trường 'coupon_code' ở root level.
-      // couponCodeForCheckout = widget.previewOrderData['coupon_code'] as String;
-    }
-
-
-    final checkoutRequestBody = {
-      'recipient_name': widget.previewOrderData['recipient_name'] as String? ?? '',
-      'recipient_phone': widget.previewOrderData['recipient_phone'] as String? ?? '',
-      'shipping_address': widget.previewOrderData['shipping_address'] as String? ?? '',
-      'notes': widget.previewOrderData['notes'] as String? ?? 'hello', // Giả sử API preview trả về 'notes'
-      'payment_method': widget.previewOrderData['payment_method'] as String? ?? 'Tiền mặt', // Giả sử API preview trả về 'payment_method'
-      'guest_email': widget.guestEmail,
-      'coupon_code': couponCodeForCheckout,
-      'use_loyalty_points': widget.previewOrderData['loyalty_points_used'] as int? ?? 0,
-      'shipper_id': 0,
-      // 'items' KHÔNG có trong request body của API /checkout này.
-    };
-
-    print("Checkout Request Body: ${jsonEncode(checkoutRequestBody)}");
-
     try {
-      final String checkoutApiUrl = '${AppConstants.baseUrl}/orders';
-      final response = await http.post(
-        Uri.parse(checkoutApiUrl),
-        headers: {
-          'accept': 'application/json',
-          'Content-Type': 'application/json',
-          'X-User-ID': widget.userId.toString(),
-        },
-        body: jsonEncode(checkoutRequestBody),
-      ).timeout(const Duration(seconds: 20));
+      final String checkoutApiUrl = '${AppConstants.baseUrl}/orders'; // API User
+      final String guestCheckoutUrl = '${AppConstants.baseUrl}/orders/guest'; // API Guest
+      
+      http.Response response;
+      
+      // 1. Lấy mã giảm giá và điểm
+      String couponCode = "";
+      if (widget.previewOrderData['applied_coupon'] != null) {
+        couponCode = widget.previewOrderData['applied_coupon']['code'];
+      }
+      int pointsUsed = widget.previewOrderData['loyalty_points_used'] ?? 0;
+
+      // 2. Logic gọi API
+      if (widget.userId.isNotEmpty) { 
+         // --- USER CHECKOUT ---
+         final prefs = await SharedPreferences.getInstance();
+         final token = prefs.getString(AppConstants.tokenKey);
+
+         response = await http.post(
+            Uri.parse(checkoutApiUrl),
+            headers: {
+              'accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'shippingAddress': {
+                'addressLine': widget.previewOrderData['shipping_address'],
+                'city': 'Vietnam', 
+                'postalCode': '70000',
+                'country': 'Vietnam'
+              },
+              'paymentMethod': widget.previewOrderData['payment_method'],
+              'discountCode': couponCode,
+              'useLoyaltyPoints': pointsUsed > 0 
+            }),
+         );
+      } else {
+         // --- GUEST CHECKOUT ---
+         List<dynamic> rawItems = widget.previewOrderData['items'];
+         List<Map<String, dynamic>> guestItems = rawItems.map((item) => {
+            "product": item['product_id'],
+            "variant": item['variant_id'],
+            "quantity": item['quantity'],
+            "price": item['price_at_purchase'], // Giá lấy từ CartItem
+            "name": item['variant']['name'], 
+            "image": item['variant']['image_url'] 
+         }).toList();
+
+         response = await http.post(
+            Uri.parse(guestCheckoutUrl),
+            headers: {
+              'accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'fullName': widget.previewOrderData['recipient_name'],
+              'email': widget.guestEmail,
+              'shippingAddress': {
+                'addressLine': widget.previewOrderData['shipping_address'],
+                'city': 'Vietnam', 
+                'postalCode': '70000',
+                'country': 'Vietnam'
+              },
+              'paymentMethod': widget.previewOrderData['payment_method'],
+              'cartItems': guestItems,
+            }),
+         );
+      }
 
       if (mounted) {
-        if (response.statusCode == 200 || response.statusCode == 201) { // 200 OK hoặc 201 Created
-          final responseData = jsonDecode(response.body) as Map<String, dynamic>;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Đặt hàng thành công! Mã đơn: ${responseData['order_code']}')),
-          );
-          // Điều hướng đến màn hình cảm ơn hoặc trang chủ
-          Navigator.of(context).popUntil((route) => route.isFirst);
-        } else {
-          String errorMessage = 'Lỗi đặt hàng.';
-          try {
-            final errorData = jsonDecode(response.body);
-            if (errorData is Map && errorData.containsKey('detail')) {
-              errorMessage = 'Lỗi đặt hàng: ${errorData['detail']} (Code: ${response.statusCode})';
-            } else {
-              errorMessage = 'Lỗi đặt hàng: ${response.reasonPhrase} (Code: ${response.statusCode})';
-            }
-          } catch (e) {
-            // Nếu response body không phải JSON hoặc không có 'detail'
-            errorMessage = 'Lỗi đặt hàng: ${response.reasonPhrase} (Code: ${response.statusCode})';
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          // Xóa giỏ hàng local nếu là guest
+          if (widget.userId.isEmpty) {
+             final prefs = await SharedPreferences.getInstance();
+             await prefs.remove('LOCAL_CART_DATA');
           }
+          
+          // --- HIỂN THỊ MÀN HÌNH THÀNH CÔNG (Success Screen) ---
+          final responseData = jsonDecode(response.body);
+          _showSuccessDialog(responseData); 
+
+        } else {
+          final errorData = jsonDecode(response.body);
           setState(() {
-            _checkoutErrorMessage = errorMessage;
+            _checkoutErrorMessage = errorData['message'] ?? 'Đặt hàng thất bại';
           });
         }
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _checkoutErrorMessage = 'Lỗi kết nối khi đặt hàng: $e';
+          _checkoutErrorMessage = 'Lỗi kết nối: $e';
         });
       }
     } finally {
@@ -259,6 +272,63 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
         });
       }
     }
+  }
+
+  // Hiển thị dialog thành công và thông tin đơn hàng
+  void _showSuccessDialog(dynamic responseData) {
+    String orderId = "Unknown";
+    if (responseData is Map) {
+       if (responseData['order'] != null) orderId = responseData['order']['_id'] ?? "";
+       else if (responseData['_id'] != null) orderId = responseData['_id'];
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Column(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green, size: 60),
+            SizedBox(height: 10),
+            Text("Đặt hàng thành công!", style: TextStyle(color: Colors.green)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("Mã đơn hàng: #${orderId.substring(0, 8).toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold)), // Rút gọn mã cho đẹp
+            const SizedBox(height: 10),
+            const Text("Cảm ơn bạn đã mua sắm.", textAlign: TextAlign.center),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).popUntil((route) => route.isFirst); // Về trang chủ
+            },
+            child: const Text("Về trang chủ"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+               Navigator.of(ctx).pop(); // Đóng dialog
+               
+               // Reset stack về Home rồi đẩy History lên (để user bấm Back từ History sẽ về Home chứ ko về Checkout)
+               Navigator.of(context).pushAndRemoveUntil(
+                 MaterialPageRoute(builder: (_) => const HomeScreen()),
+                 (route) => false,
+               );
+               
+               // Chuyển tới lịch sử đơn hàng
+               Navigator.of(context).push(
+                 MaterialPageRoute(builder: (_) => const OrderHistoryScreen())
+               );
+            },
+            child: const Text("Xem đơn hàng"),
+          )
+        ],
+      ),
+    );
   }
 
 
@@ -329,12 +399,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
                 _buildStepIndicator(),
                 const SizedBox(height: 24),
                 _buildSectionTitle("DANH SÁCH SẢN PHẨM"),
-                _isLoadingProductNames // Kiểm tra trạng thái loading
-                    ? const Center(child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: CircularProgressIndicator(),
-                ))
-                    : _buildOrderItemsList(), // Giờ sẽ dùng _detailedOrderItems
+                _buildOrderItemsList(),
                 const SizedBox(height: 24),
                 _buildSectionTitle("TÓM TẮT ĐƠN HÀNG"),
                 _buildOrderSummaryCard(),
@@ -406,28 +471,9 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
 
   Widget _buildOrderItemsList() {
     if (_orderItems.isEmpty) {
-      return Card(
-          elevation: 1,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          color: AppColors.lightGreyBackground,
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text("Không có sản phẩm nào trong đơn hàng.", style: GoogleFonts.montserrat()),
-          )
-      );
+      return const Card(child: Padding(padding: EdgeInsets.all(16), child: Text("Không có sản phẩm.")));
     }
 
-    if (_detailedOrderItems.isEmpty && !_isLoadingProductNames) { // Chỉ hiển thị "không có SP" nếu đã load xong và rỗng
-      return Card(
-          elevation: 1,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          color: AppColors.lightGreyBackground,
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text("Không có sản phẩm nào trong đơn hàng.", style: GoogleFonts.montserrat()),
-          )
-      );
-    }
     return Card(
       elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -437,34 +483,23 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
         child: ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: _detailedOrderItems.length,
+          itemCount: _orderItems.length,
           itemBuilder: (context, index) {
-            final item = _detailedOrderItems[index]; // Đây là Map<String, dynamic>
-            final variantDataFromPreview = item['variant'] as Map<String, dynamic>?;
-            final imageUrl = variantDataFromPreview?['image_url'] ?? 'assets/images/placeholder.png';
-            final bool isNetworkImage = imageUrl.startsWith('http');
-
-            // Lấy product_name và variant_name
-            final String productName = item['product_name'] as String? ?? "Sản phẩm";
-            final String variantName = variantDataFromPreview?['variant_name'] as String? ?? "Không rõ";
-            final String displayName = (productName == "Sản phẩm không có tên" || productName.isEmpty)
-                ? variantName
-                : "$productName - $variantName";
+            final item = _orderItems[index];
+            // Dữ liệu 'variant' được tạo bên CheckoutInfoScreen: {'name': ..., 'image_url': ...}
+            final variantInfo = item['variant'] as Map<String, dynamic>?;
+            final itemName = variantInfo?['name'] ?? "Sản phẩm";
+            final imageUrl = variantInfo?['image_url'] ?? "";
+            final price = double.tryParse(item['price_at_purchase']?.toString() ?? '0') ?? 0.0;
 
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
               child: Row(
                 children: [
-                  isNetworkImage
-                      ? Image.network(
+                  Image.network(
                     imageUrl,
-                    width: 60, height: 60, fit: BoxFit.contain,
-                    errorBuilder: (c,e,s) => Image.asset('assets/images/placeholder.png', width: 60, height: 60, fit: BoxFit.contain),
-                  )
-                      : Image.asset(
-                    imageUrl, // Nếu là asset
-                    width: 60, height: 60, fit: BoxFit.contain,
-                    errorBuilder: (c,e,s) => Image.asset('assets/images/placeholder.png', width: 60, height: 60, fit: BoxFit.contain),
+                    width: 60, height: 60, fit: BoxFit.cover,
+                    errorBuilder: (c,e,s) => const Icon(Icons.image, size: 60),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -472,25 +507,19 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          // API /preview trả về variant_name trong variant object,
-                          // nhưng không có product_name. Bạn cần hiển thị tên phù hợp.
-                          displayName, // Sử dụng displayName đã kết hợp
+                          itemName,
                           style: GoogleFonts.montserrat(fontSize: 14, fontWeight: FontWeight.w600),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                          maxLines: 2, overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          _formatCurrency(double.tryParse(item['price_at_purchase']?.toString() ?? '0') ?? 0.0),
+                          NumberFormat("#,##0₫", "vi_VN").format(price),
                           style: GoogleFonts.montserrat(fontSize: 13, color: AppColors.primaryRed, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
                   ),
-                  Text(
-                    "SL: ${item['quantity']}",
-                    style: GoogleFonts.montserrat(fontSize: 13),
-                  ),
+                  Text("x${item['quantity']}", style: GoogleFonts.montserrat(fontSize: 13)),
                 ],
               ),
             );
@@ -820,41 +849,16 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
 
   Widget _buildFinalizeOrderSection() {
     final totalAmount = double.tryParse(widget.previewOrderData['total_amount']?.toString() ?? '0') ?? 0.0;
-
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -3),
-          )
-        ],
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)]),
       child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                "Tổng thanh toán:", // Hoặc "Tổng tiền"
-                style: GoogleFonts.montserrat(
-                  fontSize: 14,
-                  color: AppColors.textBlack,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              Text(
-                _formatCurrency(totalAmount),
-                style: GoogleFonts.montserrat(
-                  fontSize: 18,
-                  color: AppColors.primaryRed,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              const Text("Tổng thanh toán:", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              Text(NumberFormat("#,##0₫", "vi_VN").format(totalAmount), style: const TextStyle(fontSize: 18, color: Colors.red, fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 16),
@@ -862,25 +866,12 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
             width: double.infinity,
             child: ElevatedButton(
               onPressed: (_agreeToTerms && !_isLoadingCheckout) ? _finalizeOrder : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryRed,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                textStyle: GoogleFonts.montserrat(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                disabledBackgroundColor: AppColors.primaryRed.withOpacity(0.5),
-              ),
-              child: _isLoadingCheckout
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3,))
-                  : const Text("Đặt hàng"), // Hoặc "Hoàn tất đơn hàng"
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryRed, padding: const EdgeInsets.symmetric(vertical: 12)),
+              child: _isLoadingCheckout 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white))
+                : const Text("XÁC NHẬN ĐẶT HÀNG", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ),
-          // Không cần nút "Kiểm tra danh sách sản phẩm" ở đây nữa
-          // const SizedBox(height: 8),
-          // TextButton(...)
         ],
       ),
     );

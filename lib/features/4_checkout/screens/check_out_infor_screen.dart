@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert'; // Cần cho utf8 và jsonEncode/jsonDecode
+import '../../../data/services/cart_service.dart';
+  import '../../../data/models/cart_model.dart';
+  import '../../../data/services/api_service.dart';
 
 // Giả sử CheckoutPaymentScreen được import đúng
 import 'check_out_screen.dart';
@@ -73,7 +76,7 @@ class Ward {
 
 class CheckoutInfoScreen extends StatefulWidget {
   final Map<String, dynamic>? currentUserData; // Dữ liệu người dùng từ CartScreen
-  final int userId; // User ID từ CartScreen
+  final String userId;
 
   const CheckoutInfoScreen({
     super.key,
@@ -174,6 +177,7 @@ class _CheckoutInfoScreenState extends State<CheckoutInfoScreen> {
     }
   }
 
+  // 
   Future<void> _fetchDistrictsForProvince(int provinceCode) async {
     if (!mounted) return;
     setState(() { _isLoadingDistricts = true; _currentDistricts = []; _selectedDistrict = null; _currentWards = []; _selectedWard = null; _errorMessage = null; });
@@ -220,95 +224,113 @@ class _CheckoutInfoScreenState extends State<CheckoutInfoScreen> {
     if (!mounted) return;
     setState(() { _isLoading = true; _errorMessage = null; });
 
-    // --- Validations ---
-    if (_recipientNameController.text.trim().isEmpty) {
-      if (mounted) setState(() { _errorMessage = "Vui lòng nhập họ tên người nhận."; _isLoading = false; }); return;
+    // 1. Validations Form
+    if (_recipientNameController.text.trim().isEmpty ||
+        _recipientPhoneController.text.trim().isEmpty ||
+        _shippingAddressDetailController.text.trim().isEmpty ||
+        _selectedProvince == null ||
+        _selectedDistrict == null) {
+      setState(() { _errorMessage = "Vui lòng điền đầy đủ thông tin nhận hàng."; _isLoading = false; });
+      return;
     }
-    if (_recipientPhoneController.text.trim().isEmpty) {
-      if (mounted) setState(() { _errorMessage = "Vui lòng nhập số điện thoại người nhận."; _isLoading = false; }); return;
-    }
-    if (_selectedProvince == null) {
-      if (mounted) setState(() { _errorMessage = "Vui lòng chọn Tỉnh/Thành phố."; _isLoading = false; }); return;
-    }
-    if (_selectedDistrict == null) {
-      if (mounted) setState(() { _errorMessage = "Vui lòng chọn Quận/Huyện."; _isLoading = false; }); return;
-    }
-    if (_shippingAddressDetailController.text.trim().isEmpty) {
-      if (mounted) setState(() { _errorMessage = "Vui lòng nhập chi tiết địa chỉ (số nhà, tên đường...)."; _isLoading = false; }); return;
-    }
-    // --- End Validations ---
 
+    // 2. Tạo địa chỉ đầy đủ
     String fullAddress = _shippingAddressDetailController.text.trim();
-    if (_selectedWard != null) {
-      fullAddress += ", ${_selectedWard!.name}";
-    }
-    // Luôn thêm quận/huyện và tỉnh/thành phố
+    if (_selectedWard != null) fullAddress += ", ${_selectedWard!.name}";
     fullAddress += ", ${_selectedDistrict!.name}, ${_selectedProvince!.name}";
 
-    // Request body cho API /orders/preview
-    // API này có thể không cần trường 'items' nếu nó tự lấy từ giỏ hàng của user
-    // qua X-User-ID. Nếu cần, bạn phải truyền selectedItems từ CartScreen qua.
-    final requestBody = {
-      'recipient_name': _recipientNameController.text.trim(),
-      'recipient_phone': _recipientPhoneController.text.trim(),
-      'shipping_address': fullAddress,
-      'notes': _noteController.text.trim(),
-      'payment_method': _selectedPaymentMethod,
-      'coupon_code': _couponController.text.trim(),
-      'use_loyalty_points': int.tryParse(_loyaltyPointsController.text.trim()) ?? 0,
-      // 'items': widget.selectedItemsForPreview, // BỎ COMMENT NẾU API CẦN
-    };
-
     try {
-      final response = await http.post(
-        // AppConstants.baseUrl đã là ".../api"
-        Uri.parse('${AppConstants.baseUrl}/orders/preview'),
-        headers: {
-          'X-User-ID': widget.userId.toString(),
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(requestBody), // jsonEncode mặc định là UTF-8
-      ).timeout(const Duration(seconds: 20)); // Tăng timeout một chút cho API này
+      final ApiService apiService = ApiService();
+      final CartService cartService = CartService();
+      
+      // 3. Lấy lại giỏ hàng để tính toán
+      List<CartItem> cartItems = await cartService.getCartItems();
+      if (cartItems.isEmpty) {
+         setState(() { _errorMessage = "Giỏ hàng trống."; _isLoading = false; });
+         return;
+      }
 
-      if (mounted) {
-        final decodedBody = utf8.decode(response.bodyBytes); // LUÔN DECODE CHO CẢ THÀNH CÔNG VÀ LỖI
-
-        if (response.statusCode == 200) {
-          final previewData = jsonDecode(decodedBody) as Map<String, dynamic>;
-          final guestEmailForCheckout = _emailController.text.trim();
-
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => CheckoutPaymentScreen(
-                previewOrderData: previewData,
-                guestEmail: guestEmailForCheckout.isNotEmpty ? guestEmailForCheckout : null, // Gửi email nếu có
-                userId: widget.userId,
-              ),
-            ),
-          );
+      int itemsPrice = cartItems.fold(0, (sum, item) => sum + (item.price * item.quantity));
+      
+      // Logic Ship: > 500k Free, ngược lại 30k (Khớp backend)
+      int shippingFee = itemsPrice > 500000 ? 0 : 30000;
+      
+      // 4. Xử lý Mã giảm giá
+      int couponDiscount = 0;
+      String couponCode = _couponController.text.trim();
+      if (couponCode.isNotEmpty) {
+        final discountResult = await apiService.validateDiscount(couponCode, itemsPrice);
+        if (discountResult['valid'] == true) {
+           couponDiscount = (discountResult['discountAmount'] as num).toInt();
         } else {
-          print('Lỗi xem trước đơn hàng (Preview API): ${response.statusCode} - $decodedBody');
-          String apiErrorMessage = 'Lỗi xem trước đơn hàng.';
-          try {
-            final errorJson = jsonDecode(decodedBody);
-            if (errorJson is Map && errorJson.containsKey('detail')) {
-              apiErrorMessage = errorJson['detail'] as String;
-            } else {
-              apiErrorMessage += ' (Code: ${response.statusCode})';
-            }
-          } catch (_) {
-            apiErrorMessage += ' (Code: ${response.statusCode})';
-          }
-          setState(() { _errorMessage = apiErrorMessage; });
+           // Nếu mã sai -> Báo lỗi và dừng lại (hoặc cảnh báo nhẹ)
+           setState(() { _errorMessage = discountResult['message']; _isLoading = false; });
+           return;
         }
       }
+
+      // 5. Xử lý Điểm tích lũy (Chỉ User mới có)
+      int loyaltyDiscount = 0;
+      int pointsToUse = int.tryParse(_loyaltyPointsController.text.trim()) ?? 0;
+      
+      // Kiểm tra user có đủ điểm không (nếu đã đăng nhập)
+      if (widget.currentUserData != null && pointsToUse > 0) {
+         // Giả sử lấy điểm hiện có từ currentUserData (bạn cần truyền nó vào từ CartScreen)
+         // Hoặc gọi API getProfile lại để chắc chắn. Tạm thời tính 1 điểm = 1000đ (theo logic backend)
+         loyaltyDiscount = pointsToUse * 1000;
+         
+         // Không được giảm quá tổng tiền
+         if (loyaltyDiscount > (itemsPrice + shippingFee - couponDiscount)) {
+            loyaltyDiscount = itemsPrice + shippingFee - couponDiscount;
+         }
+      }
+
+      // 6. Tính tổng cuối
+      int totalAmount = itemsPrice + shippingFee - couponDiscount - loyaltyDiscount;
+      if (totalAmount < 0) totalAmount = 0;
+
+      // 7. Đóng gói dữ liệu để chuyển sang màn hình Payment
+      // Chúng ta giả lập cấu trúc giống API preview cũ để không phải sửa nhiều ở màn sau
+      final Map<String, dynamic> previewData = {
+        'items': cartItems.map((e) => {
+          'product_id': e.productId, // Quan trọng
+          'variant_id': e.variantId, // Quan trọng
+          'quantity': e.quantity,
+          'price_at_purchase': e.price,
+          'variant': { 'name': e.name, 'image_url': e.image } // Để hiển thị
+        }).toList(),
+        'subtotal': itemsPrice,
+        'shipping_fee': shippingFee,
+        'coupon_discount_amount': couponDiscount,
+        'loyalty_discount_amount': loyaltyDiscount,
+        'total_amount': totalAmount,
+        'recipient_name': _recipientNameController.text,
+        'recipient_phone': _recipientPhoneController.text,
+        'shipping_address': fullAddress,
+        'notes': _noteController.text,
+        'payment_method': _selectedPaymentMethod,
+        'applied_coupon': couponCode.isNotEmpty ? {'code': couponCode} : null,
+        'loyalty_points_used': pointsToUse,
+        'guest_email_from_api_if_any': _emailController.text // Email cho Guest
+      };
+
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CheckoutPaymentScreen(
+              previewOrderData: previewData,
+              guestEmail: _emailController.text.isNotEmpty ? _emailController.text : null,
+              userId: widget.userId,
+            ),
+          ),
+        );
+      }
+
     } catch (e) {
-      print('Lỗi kết nối khi xem trước đơn hàng: $e');
-      if (mounted) { setState(() { _errorMessage = 'Lỗi kết nối hoặc timeout khi xem trước đơn hàng.'; }); }
+      if (mounted) setState(() { _errorMessage = "Lỗi xử lý: $e"; });
     } finally {
-      if (mounted) { setState(() { _isLoading = false; }); }
+      if (mounted) setState(() { _isLoading = false; });
     }
   }
 

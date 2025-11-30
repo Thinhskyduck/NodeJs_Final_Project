@@ -40,7 +40,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
     setState(() => _isLoading = true);
     try {
       final products = await _apiService.fetchProducts(
-        limit: 12,
+        limit:  30,
         page: 1, // Tạm thời page 1
         search: widget.initialSearch,
         categoryId: widget.categoryId,
