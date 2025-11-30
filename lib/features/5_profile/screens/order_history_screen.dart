@@ -1,3 +1,4 @@
+import 'package:cross_platform_mobile_app_development/features/5_profile/screens/order_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -70,70 +71,83 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
             itemCount: orders.length,
             itemBuilder: (context, index) {
               final order = orders[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                elevation: 3,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header: Mã đơn & Trạng thái
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            "Đơn #${order.id.substring(0, 6).toUpperCase()}", // Rút gọn ID cho đẹp
-                            style: GoogleFonts.roboto(fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _getStatusColor(order.status).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: _getStatusColor(order.status)),
-                            ),
-                            child: Text(
-                              _translateStatus(order.status),
-                              style: TextStyle(color: _getStatusColor(order.status), fontWeight: FontWeight.bold, fontSize: 12),
-                            ),
-                          )
-                        ],
-                      ),
-                      const Divider(),
-                      
-                      // Body: Ngày & Địa chỉ
-                      Text("Ngày đặt: ${order.formattedDate}", style: const TextStyle(color: Colors.grey)),
-                      const SizedBox(height: 4),
-                      Text("Giao đến: ${order.address}", style: const TextStyle(color: Colors.black87)),
-                      const SizedBox(height: 8),
-
-                      // List sản phẩm (Hiển thị ngắn gọn)
-                      ...order.items.map((item) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
+              return InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => OrderDetailScreen(
+                        orderId: order.id,
+                        orderModel: order, // Truyền luôn data để load nhanh
+                      )
+                    )
+                  );
+                },
+                child: Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  elevation: 3,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header: Mã đơn & Trạng thái
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text("${item.quantity}x ", style: const TextStyle(fontWeight: FontWeight.bold)),
-                            Expanded(child: Text(item.name, overflow: TextOverflow.ellipsis)),
+                            Text(
+                              "Đơn #${order.id.substring(0, 6).toUpperCase()}", // Rút gọn ID cho đẹp
+                              style: GoogleFonts.roboto(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _getStatusColor(order.status).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: _getStatusColor(order.status)),
+                              ),
+                              child: Text(
+                                _translateStatus(order.status),
+                                style: TextStyle(color: _getStatusColor(order.status), fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
+                            )
                           ],
                         ),
-                      )),
+                        const Divider(),
+                        
+                        // Body: Ngày & Địa chỉ
+                        Text("Ngày đặt: ${order.formattedDate}", style: const TextStyle(color: Colors.grey)),
+                        const SizedBox(height: 4),
+                        Text("Giao đến: ${order.address}", style: const TextStyle(color: Colors.black87)),
+                        const SizedBox(height: 8),
 
-                      const Divider(),
-                      
-                      // Footer: Tổng tiền
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          const Text("Tổng tiền: ", style: TextStyle(fontSize: 14)),
-                          Text(
-                            order.formattedTotal,
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red),
+                        // List sản phẩm (Hiển thị ngắn gọn)
+                        ...order.items.map((item) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            children: [
+                              Text("${item.quantity}x ", style: const TextStyle(fontWeight: FontWeight.bold)),
+                              Expanded(child: Text(item.name, overflow: TextOverflow.ellipsis)),
+                            ],
                           ),
-                        ],
-                      )
-                    ],
+                        )),
+
+                        const Divider(),
+                        
+                        // Footer: Tổng tiền
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            const Text("Tổng tiền: ", style: TextStyle(fontSize: 14)),
+                            Text(
+                              order.formattedTotal,
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red),
+                            ),
+                          ],
+                        )
+                      ],
+                    ),
                   ),
                 ),
               );

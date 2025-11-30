@@ -1,5 +1,3 @@
-// lib/features/2_product/screens/catalog_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../data/models/product_model.dart';
@@ -8,7 +6,7 @@ import 'product_detail.dart';
 
 class CatalogScreen extends StatefulWidget {
   final String? initialSearch;
-  final String? categoryId; // Sửa thành String cho đúng MongoDB ID
+  final String? categoryId;
 
   const CatalogScreen({super.key, this.initialSearch, this.categoryId});
 
@@ -20,14 +18,17 @@ class _CatalogScreenState extends State<CatalogScreen> {
   final ApiService _apiService = ApiService();
   List<Product> _products = [];
   bool _isLoading = true;
-  
-  // State cho bộ lọc
-  String _sortBy = "-createdAt"; // Mặc định: Mới nhất
-  RangeValues _priceRange = const RangeValues(0, 50000000); // 0 - 50 triệu
-  final double _maxPriceLimit = 100000000; // Max slider 100 triệu
-  
-  // Danh sách brand để lọc (Nên lấy từ API nếu có, ở đây hardcode demo)
-  final List<String> _brands = ["Acer", "Asus", "Dell", "HP", "Apple", "Samsung"];
+
+  // --- PAGINATION STATE ---
+  int _currentPage = 1;
+  int _totalPages = 1;
+  static const int _limit = 12; // Số sản phẩm mỗi trang
+
+  // --- FILTER STATE ---
+  String _sortBy = "-createdAt";
+  RangeValues _priceRange = const RangeValues(0, 50000000);
+  final double _maxPriceLimit = 100000000;
+  final List<String> _brands = ["Acer", "Asus", "Dell", "HP", "Apple", "Samsung", "MSI", "Lenovo"];
   String? _selectedBrand;
 
   @override
@@ -39,9 +40,10 @@ class _CatalogScreenState extends State<CatalogScreen> {
   Future<void> _fetchProducts() async {
     setState(() => _isLoading = true);
     try {
-      final products = await _apiService.fetchProducts(
-        limit:  30,
-        page: 1, // Tạm thời page 1
+      // Gọi hàm MỚI hỗ trợ trả về totalPages
+      final result = await _apiService.fetchProductsForCatalog(
+        limit: _limit,
+        page: _currentPage, // Truyền trang hiện tại
         search: widget.initialSearch,
         categoryId: widget.categoryId,
         sortBy: _sortBy,
@@ -49,10 +51,11 @@ class _CatalogScreenState extends State<CatalogScreen> {
         maxPrice: _priceRange.end,
         brand: _selectedBrand,
       );
-      
+
       if (mounted) {
         setState(() {
-          _products = products;
+          _products = result['products'];
+          _totalPages = result['totalPages'];
           _isLoading = false;
         });
       }
@@ -61,10 +64,61 @@ class _CatalogScreenState extends State<CatalogScreen> {
       print("Lỗi catalog: $e");
     }
   }
-  
-  // Widget hiển thị Panel bộ lọc
+
+  void _onPageChanged(int page) {
+    setState(() => _currentPage = page);
+    _fetchProducts();
+  }
+
+  // Widget hiển thị thanh phân trang
+  Widget _buildPaginationBar() {
+    if (_totalPages <= 1) return const SizedBox.shrink();
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.arrow_back_ios, size: 16),
+          onPressed: _currentPage > 1 ? () => _onPageChanged(_currentPage - 1) : null,
+        ),
+        // Hiển thị các số trang
+        Wrap(
+          children: List.generate(_totalPages, (index) {
+            final page = index + 1;
+            final isCurrent = page == _currentPage;
+            return InkWell(
+              onTap: () => _onPageChanged(page),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isCurrent ? Colors.blue : Colors.grey[200],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  "$page",
+                  style: TextStyle(
+                    color: isCurrent ? Colors.white : Colors.black,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+        IconButton(
+          icon: const Icon(Icons.arrow_forward_ios, size: 16),
+          onPressed: _currentPage < _totalPages ? () => _onPageChanged(_currentPage + 1) : null,
+        ),
+      ],
+    );
+  }
+
+  // ... (Giữ nguyên _buildFilterDrawer và _buildProductCard cũ) ...
   Widget _buildFilterDrawer() {
-    return Drawer(
+     // ... Copy code Drawer cũ vào đây ...
+     // (Để ngắn gọn tôi không paste lại đoạn Drawer, bạn giữ nguyên code cũ)
+     return Drawer(
       width: 300,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -73,8 +127,6 @@ class _CatalogScreenState extends State<CatalogScreen> {
           children: [
             const Text("BỘ LỌC TÌM KIẾM", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const Divider(),
-            
-            // 1. Lọc theo giá
             const Text("Khoảng giá:", style: TextStyle(fontWeight: FontWeight.bold)),
             RangeSlider(
               values: _priceRange,
@@ -96,10 +148,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
                 Text(NumberFormat("#,##0").format(_priceRange.end)),
               ],
             ),
-            
             const SizedBox(height: 20),
-            
-            // 2. Lọc theo Brand
             const Text("Thương hiệu:", style: TextStyle(fontWeight: FontWeight.bold)),
             Wrap(
               spacing: 8,
@@ -109,23 +158,21 @@ class _CatalogScreenState extends State<CatalogScreen> {
                   selected: _selectedBrand == brand,
                   onSelected: (bool selected) {
                     setState(() {
-                      _selectedBrand = selected ? brand : null; // Chọn hoặc bỏ chọn
+                      _selectedBrand = selected ? brand : null;
                     });
                   },
                 );
               }).toList(),
             ),
-            
             const Spacer(),
-            
-            // Nút Áp dụng
             SizedBox(
               width: double.infinity,
               height: 45,
               child: ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context); // Đóng drawer
-                  _fetchProducts(); // Gọi API lại
+                  Navigator.pop(context);
+                  _currentPage = 1; // Reset về trang 1 khi lọc
+                  _fetchProducts();
                 },
                 child: const Text("ÁP DỤNG"),
               ),
@@ -135,73 +182,10 @@ class _CatalogScreenState extends State<CatalogScreen> {
       ),
     );
   }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      endDrawer: _buildFilterDrawer(), // Drawer lọc bên phải
-      appBar: AppBar(
-        title: const Text("Danh sách sản phẩm"),
-        actions: [
-          // Nút mở bộ lọc
-          Builder(
-            builder: (ctx) => IconButton(
-              icon: const Icon(Icons.filter_list),
-              onPressed: () => Scaffold.of(ctx).openEndDrawer(),
-              tooltip: "Bộ lọc",
-            ),
-          ),
-          const SizedBox(width: 10),
-          // Dropdown Sắp xếp
-          DropdownButton<String>(
-            value: _sortBy,
-            dropdownColor: Colors.white,
-            underline: Container(),
-            icon: const Icon(Icons.sort, color: Colors.white),
-            style: const TextStyle(color: Colors.black), // Sửa lại màu chữ nếu AppBar màu xanh
-            onChanged: (String? newValue) {
-              if (newValue != null) {
-                setState(() => _sortBy = newValue);
-                _fetchProducts();
-              }
-            },
-            selectedItemBuilder: (BuildContext context) {
-              return [
-                const Center(child: Text("Mới nhất", style: TextStyle(color: Colors.white))),
-                const Center(child: Text("Giá tăng dần", style: TextStyle(color: Colors.white))),
-                const Center(child: Text("Giá giảm dần", style: TextStyle(color: Colors.white))),
-              ];
-            },
-            items: const [
-              DropdownMenuItem(value: '-createdAt', child: Text("Mới nhất")),
-              DropdownMenuItem(value: 'price', child: Text("Giá tăng dần")),
-              DropdownMenuItem(value: '-price', child: Text("Giá giảm dần")),
-            ],
-          ),
-          const SizedBox(width: 10),
-        ],
-      ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : _products.isEmpty 
-          ? const Center(child: Text("Không tìm thấy sản phẩm nào."))
-          : GridView.builder(
-              padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 250, // Responsive cho Web
-                childAspectRatio: 0.7,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-              ),
-              itemCount: _products.length,
-              itemBuilder: (ctx, i) => _buildProductCard(_products[i]),
-            ),
-    );
-  }
-
-  // Card sản phẩm giữ nguyên logic cũ, chỉ chỉnh sửa UI một chút
+  
   Widget _buildProductCard(Product product) {
-    return GestureDetector(
+      // ... Copy code Card cũ vào đây ...
+      return GestureDetector(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProductDetailsScreen2(productId: product.id))),
       child: Card(
         elevation: 2,
@@ -247,6 +231,86 @@ class _CatalogScreenState extends State<CatalogScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      endDrawer: _buildFilterDrawer(),
+      appBar: AppBar(
+        title: const Text("Danh sách sản phẩm"),
+        actions: [
+          Builder(
+            builder: (ctx) => IconButton(
+              icon: const Icon(Icons.filter_list),
+              onPressed: () => Scaffold.of(ctx).openEndDrawer(),
+              tooltip: "Bộ lọc",
+            ),
+          ),
+          const SizedBox(width: 10),
+          DropdownButton<String>(
+            value: _sortBy,
+            dropdownColor: Colors.black,
+            underline: Container(),
+            icon: const Icon(Icons.sort, color: Colors.white),
+            style: const TextStyle(color: Colors.white),
+            onChanged: (String? newValue) {
+              if (newValue != null) {
+                setState(() {
+                   _sortBy = newValue;
+                   _currentPage = 1; // Reset về trang 1 khi sort
+                });
+                _fetchProducts();
+              }
+            },
+            selectedItemBuilder: (BuildContext context) {
+              return [
+                const Center(child: Text("Mới nhất", style: TextStyle(color: Colors.white))),
+                const Center(child: Text("Giá tăng dần", style: TextStyle(color: Colors.white))),
+                const Center(child: Text("Giá giảm dần", style: TextStyle(color: Colors.white))),
+                const Center(child: Text("Tên A-Z", style: TextStyle(color: Colors.white))),
+                const Center(child: Text("Tên Z-A", style: TextStyle(color: Colors.white))),
+              ];
+            },
+            items: const [
+              DropdownMenuItem(value: '-createdAt', child: Text("Mới nhất")),
+              DropdownMenuItem(value: 'price', child: Text("Giá tăng dần")),
+              DropdownMenuItem(value: '-price', child: Text("Giá giảm dần")),
+              DropdownMenuItem(value: 'name', child: Text("Tên A-Z")),
+              DropdownMenuItem(value: '-name', child: Text("Tên Z-A")),
+            ],
+          ),
+          const SizedBox(width: 10),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Expanded(
+                  child: _products.isEmpty
+                      ? const Center(child: Text("Không tìm thấy sản phẩm nào."))
+                      : GridView.builder(
+                          padding: const EdgeInsets.all(16),
+                          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 250,
+                            childAspectRatio: 0.7,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                          ),
+                          itemCount: _products.length,
+                          itemBuilder: (ctx, i) => _buildProductCard(_products[i]),
+                        ),
+                ),
+                // THANH PHÂN TRANG Ở ĐÂY
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  color: Colors.white,
+                  child: _buildPaginationBar(),
+                )
+              ],
+            ),
     );
   }
 }

@@ -491,4 +491,67 @@ class ApiService {
   Future<List<Product>> fetchProductsByCategory(String categoryId, {int limit = 8}) async {
     return await fetchProducts(limit: limit, categoryId: categoryId);
   }
+
+  // --- LẤY CHI TIẾT ĐƠN HÀNG ---
+  Future<OrderModel?> getOrderDetail(String orderId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${AppConstants.baseUrl}/orders/$orderId'),
+        headers: await _getHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        return OrderModel.fromJson(data);
+      }
+      return null;
+    } catch (e) {
+      print('Get order detail error: $e');
+      return null;
+    }
+  }
+
+  // --- HÀM MỚI CHO CATALOG (TRẢ VỀ CẢ TOTAL PAGES) ---
+  Future<Map<String, dynamic>> fetchProductsForCatalog({
+    int page = 1,
+    int limit = 12,
+    String? search,
+    String? sortBy,
+    String? categoryId,
+    double? minPrice,
+    double? maxPrice,
+    String? brand,
+  }) async {
+    String queryString = "page=$page&limit=$limit";
+    
+    if (search != null && search.isNotEmpty) queryString += "&keyword=$search";
+    if (sortBy != null && sortBy.isNotEmpty) queryString += "&sort=$sortBy";
+    if (categoryId != null && categoryId.isNotEmpty) queryString += "&category=$categoryId";
+    if (minPrice != null) queryString += "&price[gte]=${minPrice.toInt()}";
+    if (maxPrice != null) queryString += "&price[lte]=${maxPrice.toInt()}";
+    if (brand != null && brand.isNotEmpty) queryString += "&brand=$brand";
+
+    final url = Uri.parse('${AppConstants.baseUrl}/products?$queryString');
+    
+    final response = await http.get(url, headers: {'Content-Type': 'application/json'});
+
+    if (response.statusCode == 200) {
+      final data = json.decode(utf8.decode(response.bodyBytes));
+      
+      List<dynamic> productsJson = [];
+      if (data['products'] != null) {
+        productsJson = data['products'];
+      } else if (data['data'] != null) {
+        productsJson = data['data'];
+      }
+
+      return {
+        'products': productsJson.map((json) => Product.fromJson(json)).toList(),
+        'totalPages': data['totalPages'] ?? 1, // Lấy tổng số trang từ Backend
+        'currentPage': data['currentPage'] ?? 1,
+      };
+    } else {
+      throw Exception('Failed to load catalog');
+    }
+  }
 }
