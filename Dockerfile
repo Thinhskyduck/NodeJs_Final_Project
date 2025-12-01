@@ -1,5 +1,5 @@
 # Sử dụng Node.js version 18
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Tạo thư mục làm việc trong container
 WORKDIR /app

@@ -12,6 +12,7 @@ const Category = require('./src/api/models/categoryModel');
 const Order = require('./src/api/models/orderModel');
 const Discount = require('./src/api/models/discountModel');
 const Cart = require('./src/api/models/cartModel');
+const { indexProduct, esClient } = require('./src/config/elastic');
 
 const connectDB = async () => {
   try {
@@ -572,20 +573,24 @@ const importData = async () => {
     ];
 
     await Product.insertMany(productsData);
-    console.log('Products Created!');
+    const allProducts = await Product.find({}); // Lấy lại tất cả
+    for (const p of allProducts) {
+      await indexProduct(p); // Đẩy từng cái vào ES
+    }
+    console.log('Products Indexed to Elasticsearch!');
 
     // 5. Create Coupons
     await Discount.create({
-      code: "SALE50",
+      code: "SALE5",
       value: 50000,
-      maxUses: 100,
+      maxUses: 10,
       discountType: "fixed"
     });
     
     await Discount.create({
-      code: "TDTU10",
+      code: "TDTU1",
       value: 10, // 10%
-      maxUses: 50,
+      maxUses: 10,
       discountType: "percentage"
     });
 
@@ -597,6 +602,7 @@ const importData = async () => {
     console.error(`Error: ${error.message}`);
     process.exit(1);
   }
+  
 };
 
 const destroyData = async () => {

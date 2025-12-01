@@ -2,6 +2,7 @@
 
 const Product = require('../models/productModel');
 const jwt = require('jsonwebtoken');
+const { indexProduct, removeProduct, searchProductsES } = require('../../config/elastic');
 const Category = require('../models/categoryModel'); // Cần để kiểm tra category
 
 // @desc    Tạo sản phẩm mới
@@ -44,60 +45,70 @@ const createProduct = async (req, res) => {
   }
 };
 
-// @desc    Lấy tất cả sản phẩm (hỗ trợ phân trang, lọc, sắp xếp)
+// @desc    Lấy tất cả sản phẩm (hỗ trợ phân trang, lọc, sắp xếp, ELASTICSEARCH)
 // @route   GET /api/products
 // @access  Public
 const getProducts = async (req, res) => {
   try {
     // 1. LỌC (FILTERING)
-    // Tạo một bản sao của req.query để không làm thay đổi object gốc
     const queryObj = { ...req.query };
-
-    // Loại bỏ các trường đặc biệt ra khỏi query để xử lý riêng
     const excludedFields = ['page', 'sort', 'limit', 'fields', 'keyword'];
     excludedFields.forEach((el) => delete queryObj[el]);
 
     // Lọc nâng cao cho khoảng giá (gte, gt, lte, lt)
-    // Ví dụ: /api/products?price[gte]=10000000&price[lte]=20000000
     let queryStr = JSON.stringify(queryObj);
     queryStr = queryStr.replace(/\b(gte|gt|lte|lt)\b/g, (match) => `$${match}`);
     
-    // Xử lý lọc theo Brand - vì brand là một trường cụ thể, cần xử lý riêng nếu cần
-    // Ví dụ, nếu client gửi brand=Dell,HP,Asus, ta sẽ chuyển thành { brand: { $in: ['Dell', 'HP', 'Asus'] } }
     let filter = JSON.parse(queryStr);
+
+    // Xử lý lọc theo Brand
     if (req.query.brand) {
         filter.brand = { $in: req.query.brand.split(',') };
     }
 
-    // Xử lý tìm kiếm bằng keyword
+    // --- XỬ LÝ TÌM KIẾM (ĐOẠN NÀY ĐÃ SỬA) ---
     if (req.query.keyword) {
-      filter.name = {
-        $regex: req.query.keyword,
-        $options: 'i', // không phân biệt hoa thường
-      };
+      try {
+        // Cách mới: Hỏi Elasticsearch trước
+        const productIds = await searchProductsES(req.query.keyword);
+        
+        // Nếu tìm thấy, lọc Mongo theo danh sách ID trả về
+        if (productIds.length > 0) {
+            filter._id = { $in: productIds };
+        } else {
+            // Nếu Elastic không tìm thấy gì, ép Mongo trả về rỗng luôn (để tránh hiện tất cả)
+            // Bằng cách gán _id là một ID giả không tồn tại
+            filter._id = "000000000000000000000000"; 
+        }
+      } catch (err) {
+        console.error("⚠️ Elasticsearch lỗi hoặc chưa bật, quay về tìm kiếm thường:", err.message);
+        // Cách cũ (Fallback): Nếu ES lỗi thì dùng Regex như cũ
+        filter.name = {
+          $regex: req.query.keyword,
+          $options: 'i',
+        };
+      }
     }
+    // ----------------------------------------
 
     let query = Product.find(filter);
 
     // 2. SẮP XẾP (SORTING)
-    // Ví dụ: /api/products?sort=price (tăng dần), /api/products?sort=-price (giảm dần)
-    // Hoặc sort=name,-price
     if (req.query.sort) {
       const sortBy = req.query.sort.split(',').join(' ');
       query = query.sort(sortBy);
     } else {
-      // Mặc định sắp xếp theo sản phẩm mới nhất
       query = query.sort('-createdAt');
     }
 
     // 3. PHÂN TRANG (PAGINATION)
     const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 12; // Mặc định 12 sản phẩm/trang
+    const limit = Number(req.query.limit) || 12;
     const skip = (page - 1) * limit;
 
     query = query.skip(skip).limit(limit);
 
-    // Lấy tổng số document khớp với điều kiện lọc để tính tổng số trang
+    // Lấy tổng số document
     const totalProducts = await Product.countDocuments(filter);
 
     // Thực thi câu query
@@ -152,6 +163,7 @@ const updateProduct = async (req, res) => {
             product.variants = variants || product.variants;
 
             const updatedProduct = await product.save();
+            await indexProduct(updatedProduct);
             res.json(updatedProduct);
         } else {
             res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
@@ -170,6 +182,7 @@ const deleteProduct = async (req, res) => {
 
         if (product) {
             await product.deleteOne();
+            await removeProduct(req.params.id);
             res.json({ message: 'Sản phẩm đã được xóa' });
         } else {
             res.status(404).json({ message: 'Không tìm thấy sản phẩm' });

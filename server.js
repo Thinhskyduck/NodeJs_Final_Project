@@ -1,6 +1,7 @@
 // server.js
 const http = require('http');
-const { Server } = require('socket.io'); // Import Socket.io
+const { Server } = require('socket.io');
+const { createIndex } = require('./src/config/elastic');
 const app = require('./app');
 
 const PORT = process.env.PORT || 5000;
@@ -32,4 +33,5 @@ app.set('socketio', io);
 server.listen(PORT, () => {
   console.log(`Server is running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
   console.log(`Socket.io is ready!`);
+  createIndex();
 });
