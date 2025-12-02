@@ -6,7 +6,7 @@ const { registerUser, loginUser, getUserProfile, updateUserProfile,
     changePassword, 
     addAddress,
     forgotPassword,
-    resetPassword } = require('../controllers/userController');
+    resetPassword, deleteAddress, setDefaultAddress } = require('../controllers/userController');
 const { protect } = require('../middlewares/authMiddleware');
 
 /**
@@ -207,5 +207,11 @@ router.put('/reset-password/:resetToken', resetPassword);
 
 router.route('/addresses')
     .post(protect, addAddress);
+
+    // Thêm đoạn này vào cuối (trước module.exports)
+router.route('/addresses/:id')
+    .delete(protect, deleteAddress);
+
+router.route('/addresses/:id/default').put(protect, setDefaultAddress);
 
 module.exports = router;

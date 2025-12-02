@@ -88,6 +88,9 @@ const loginUser = async (req, res) => {
 // @access  Private (Cần token)
 const getUserProfile = async (req, res) => {
   // Nhờ middleware `protect`, chúng ta đã có thông tin user trong `req.user`
+  if (!req.user) {
+      return res.status(401).json({ message: 'User not found in request context' });
+  }
   const user = await User.findById(req.user._id);
 
   if (user) {
@@ -237,6 +240,62 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// @desc    Xóa địa chỉ
+// @route   DELETE /api/users/addresses/:id
+// @access  Private
+const deleteAddress = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        if (user) {
+            // Lọc bỏ địa chỉ có _id trùng với params
+            user.addresses = user.addresses.filter(
+                (addr) => addr._id.toString() !== req.params.id
+            );
+            await user.save();
+            res.json(user.addresses); // Trả về danh sách mới
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi máy chủ', error: error.message });
+    }
+};
+
+// @desc    Đặt địa chỉ mặc định
+// @route   PUT /api/users/addresses/:id/default
+// @access  Private
+const setDefaultAddress = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        if (user) {
+            const addressId = req.params.id;
+            
+            // Duyệt qua tất cả địa chỉ
+            let found = false;
+            user.addresses.forEach(addr => {
+                if (addr._id.toString() === addressId) {
+                    addr.isDefault = true;
+                    found = true;
+                } else {
+                    addr.isDefault = false;
+                }
+            });
+
+            if (found) {
+                await user.save();
+                res.json(user.addresses);
+            } else {
+                res.status(404).json({ message: 'Địa chỉ không tồn tại' });
+            }
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi máy chủ', error: error.message });
+    }
+};
+
+
 module.exports = {
   registerUser,
   loginUser,
@@ -246,4 +305,6 @@ module.exports = {
   addAddress,
   forgotPassword,
   resetPassword,
+  deleteAddress,
+  setDefaultAddress,
 };

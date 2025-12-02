@@ -20,16 +20,18 @@ const createOrder = async (req, res) => {
   session.startTransaction();
 
   try {
-    const { shippingAddress, paymentMethod, discountCode, useLoyaltyPoints } = req.body;
+    // Merge: Sử dụng pointsToUse (số lượng cụ thể) thay vì boolean useLoyaltyPoints
+    const { shippingAddress, paymentMethod, discountCode, pointsToUse } = req.body;
+    
     const user = await User.findById(req.user._id).session(session);
 
-    // 1. Lấy giỏ hàng từ DB
+    // 1. Lấy và kiểm tra giỏ hàng
     const cart = await Cart.findOne({ user: user._id }).session(session);
     if (!cart || cart.items.length === 0) {
       throw new Error('Giỏ hàng của bạn đang trống');
     }
 
-    // 2. Validate Items & Lấy giá chuẩn từ Product DB
+    // 2. Tính toán giá sản phẩm & trừ kho
     let finalOrderItems = [];
     let itemsPrice = 0;
 
@@ -44,11 +46,9 @@ const createOrder = async (req, res) => {
         throw new Error(`Sản phẩm ${product.name} (${variant.name}) không đủ hàng`);
       }
 
-      // Trừ kho
       variant.stockQuantity -= item.quantity;
       await product.save({ session });
 
-      // Lấy giá chuẩn từ DB
       const realPrice = variant.price;
       itemsPrice += realPrice * item.quantity;
 
@@ -62,13 +62,19 @@ const createOrder = async (req, res) => {
       });
     }
 
-    // 3. Tính toán tổng tiền
-    const shippingPrice = itemsPrice > 500000 ? 0 : 30000; // Freeship > 500k
+    // 3. Tính tổng tiền ban đầu
+    const shippingPrice = itemsPrice > 500000 ? 0 : 30000;
     const taxPrice = 0;
+    
+    // totalPrice bắt đầu bằng tổng phụ phí
     let totalPrice = itemsPrice + shippingPrice + taxPrice;
-    let discountAmount = 0;
+    
+    // Khởi tạo biến theo dõi giảm giá
+    let discountAmount = 0; 
+    let loyaltyDiscount = 0; 
+    let actualPointsUsed = 0; 
 
-    // 4. Xử lý mã giảm giá
+    // 4. Xử lý Coupon (Ưu tiên trừ Coupon trước)
     let appliedDiscount = null;
     if (discountCode) {
       const discount = await Discount.findOne({ code: discountCode.toUpperCase(), isActive: true }).session(session);
@@ -78,39 +84,56 @@ const createOrder = async (req, res) => {
         } else {
             discountAmount = (itemsPrice * discount.value) / 100;
         }
+
         // Không giảm quá tổng tiền
         if(discountAmount > totalPrice) discountAmount = totalPrice;
         
         totalPrice -= discountAmount;
         appliedDiscount = discount;
+        
+        // Cập nhật số lần dùng coupon
+        discount.timesUsed += 1;
+        await discount.save({ session });
       } else {
         throw new Error('Mã giảm giá không hợp lệ hoặc đã hết lượt');
       }
     }
 
-    // 5. Xử lý DÙNG điểm loyalty (Tiêu điểm để giảm giá)
-    if (useLoyaltyPoints && user.loyaltyPoints > 0) {
-        const pointsValue = user.loyaltyPoints * 1000; // 1 điểm = 1000đ
-        if (totalPrice >= pointsValue) {
-            totalPrice -= pointsValue;
-            user.loyaltyPoints = 0; // Trừ hết điểm
-        } else {
-            const pointsToSpend = Math.ceil(totalPrice / 1000);
-            user.loyaltyPoints -= pointsToSpend; // Trừ 1 phần
-            totalPrice = 0;
+    // 5. Xử lý điểm Loyalty (Logic nâng cao từ Incoming)
+    const pointsToUseNum = Number(pointsToUse) || 0;
+
+    if (pointsToUseNum > 0) {
+        // a. Kiểm tra số dư điểm
+        if (user.loyaltyPoints < pointsToUseNum) {
+            throw new Error(`Bạn không đủ điểm (Có: ${user.loyaltyPoints}, Muốn dùng: ${pointsToUseNum})`);
         }
-        await user.save({ session }); // Lưu user với số điểm đã bị trừ
+
+        // b. Tính giá trị quy đổi (1 điểm = 1000đ)
+        let potentialDiscount = pointsToUseNum * 1000;
+
+        // c. Logic thông minh: Kiểm tra xem có bị thừa điểm không
+        if (potentialDiscount > totalPrice) {
+            // Trường hợp điểm nhiều hơn tiền phải trả -> Chỉ trừ vừa đủ
+            loyaltyDiscount = totalPrice;
+            // Tính ngược lại số điểm thực sự cần (làm tròn lên)
+            actualPointsUsed = Math.ceil(totalPrice / 1000); 
+            totalPrice = 0; // Đơn hàng về 0đ
+        } else {
+            // Trường hợp bình thường
+            loyaltyDiscount = potentialDiscount;
+            actualPointsUsed = pointsToUseNum;
+            totalPrice -= loyaltyDiscount;
+        }
+
+        // d. Trừ điểm của user (Dùng số thực tế actualPointsUsed)
+        user.loyaltyPoints -= actualPointsUsed;
+        await user.save({ session });
     }
 
-    // 6. Cập nhật Discount Usage
-    if (appliedDiscount) {
-        appliedDiscount.timesUsed += 1;
-        await appliedDiscount.save({ session });
-    }
-
-    // --- KHÔNG CỘNG ĐIỂM Ở ĐÂY (Logic cũ bị sai đã được xóa) ---
+    // --- QUYẾT ĐỊNH MERGE: KHÔNG cộng điểm ở đây (theo Current) ---
+    // Điểm sẽ được cộng ở updateOrderStatus khi đơn hàng thành công để an toàn hơn.
     
-    // 7. Lưu Order
+    // 6. Lưu Order
     const order = new Order({
         user: user._id,
         orderItems: finalOrderItems,
@@ -119,22 +142,29 @@ const createOrder = async (req, res) => {
         itemsPrice,
         shippingPrice,
         taxPrice,
-        totalPrice,
+        
+        totalPrice, // Giá cuối cùng khách phải trả
+        
+        // Lưu thông tin Coupon
         discount: appliedDiscount ? { code: appliedDiscount.code, amount: discountAmount } : undefined,
+        
+        // Lưu thông tin Điểm (Merge từ Incoming: thêm field này để tracking tốt hơn)
+        loyaltyPointsUsed: actualPointsUsed,
+        loyaltyDiscountAmount: loyaltyDiscount 
     });
     
     const createdOrderArray = await Order.create([order], { session });
     const createdOrder = createdOrderArray[0];
 
-    // 8. Xóa giỏ hàng
+    // 7. Xóa giỏ hàng & Commit
     await Cart.deleteOne({ _id: cart._id }).session(session);
 
     await session.commitTransaction();
     session.endSession();
     
     // --- POST-TRANSACTION ---
-    
-    // 1. Socket thông báo Admin
+
+    // Socket IO
     const io = req.app.get('socketio');
     if (io) {
         io.emit('new_order_notification', {
@@ -144,7 +174,7 @@ const createOrder = async (req, res) => {
         });
     }
 
-    // 2. RabbitMQ gửi email xác nhận
+    // RabbitMQ
     sendToQueue('email_queue', {
         type: 'ORDER_CONFIRMATION',
         email: user.email,
@@ -161,7 +191,7 @@ const createOrder = async (req, res) => {
 };
 
 // ==============================================================================
-// 2. TẠO ĐƠN HÀNG GUEST (KHÔNG CẦN LOGIN - CÓ MÃ GIẢM GIÁ)
+// 2. TẠO ĐƠN HÀNG GUEST (KHÔNG CẦN LOGIN)
 // ==============================================================================
 // @route   POST /api/orders/guest
 // @access  Public
@@ -178,7 +208,7 @@ const createGuestOrder = async (req, res) => {
         throw new Error('Thiếu thông tin hoặc giỏ hàng trống');
     }
 
-    // 1. User Logic (Tìm hoặc Tạo mới)
+    // 1. User Logic
     let user = await User.findOne({ email }).session(session);
     let isNewUser = false;
     
@@ -195,7 +225,7 @@ const createGuestOrder = async (req, res) => {
         isNewUser = true;
     }
     
-    // 2. Validate Items & Lấy giá chuẩn từ Product DB
+    // 2. Validate Items & Lấy giá từ Database
     let finalOrderItems = [];
     let itemsPrice = 0;
 
@@ -210,7 +240,6 @@ const createGuestOrder = async (req, res) => {
              throw new Error(`Sản phẩm ${product.name} (${variant.name}) không đủ hàng`);
         }
         
-        // Trừ Kho
         variant.stockQuantity -= item.quantity;
         await product.save({ session });
 
@@ -233,7 +262,7 @@ const createGuestOrder = async (req, res) => {
     let totalPrice = itemsPrice + shippingPrice + taxPrice;
     let discountAmount = 0;
 
-    // 4. Xử lý mã giảm giá (CÓ LOGIC GIẢM GIÁ CHO GUEST)
+    // 4. Xử lý Mã giảm giá
     let appliedDiscount = null;
     if (discountCode) {
       const discount = await Discount.findOne({ code: discountCode.toUpperCase(), isActive: true }).session(session);
@@ -253,7 +282,7 @@ const createGuestOrder = async (req, res) => {
       }
     }
 
-    // 5. Cập nhật Discount Usage
+    // 5. Cập nhật số lần dùng Discount
     if (appliedDiscount) {
         appliedDiscount.timesUsed += 1;
         await appliedDiscount.save({ session });
@@ -280,8 +309,8 @@ const createGuestOrder = async (req, res) => {
     session.endSession();
 
     // --- POST-TRANSACTION ---
-    
-    // 1. Socket Admin
+
+    // Socket IO
     const io = req.app.get('socketio');
     if (io) {
         io.emit('new_order_notification', {
@@ -291,14 +320,14 @@ const createGuestOrder = async (req, res) => {
         });
     }
 
-    // 2. RabbitMQ gửi email đơn hàng
+    // RabbitMQ: Gửi mail xác nhận
     sendToQueue('email_queue', {
         type: 'ORDER_CONFIRMATION',
         email: email,
         order: createdOrder
     });
 
-    // 3. RabbitMQ gửi mật khẩu (nếu user mới)
+    // RabbitMQ: Gửi password nếu user mới
     if (isNewUser && generatedPassword) {
         sendToQueue('email_queue', {
             type: 'NEW_USER_PASSWORD',
@@ -309,7 +338,7 @@ const createGuestOrder = async (req, res) => {
 
     res.status(201).json({
         message: isNewUser 
-            ? 'Đơn hàng thành công. Tài khoản đã được tạo, vui lòng kiểm tra email.'
+            ? 'Đơn hàng thành công. Tài khoản đã được tạo.'
             : 'Đơn hàng thành công.',
         order: createdOrder
     });
@@ -325,7 +354,6 @@ const createGuestOrder = async (req, res) => {
 // 3. CÁC API KHÁC (GET, UPDATE)
 // ==============================================================================
 
-// @desc    Lấy đơn hàng của tôi
 const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
@@ -335,7 +363,6 @@ const getMyOrders = async (req, res) => {
   }
 };
 
-// @desc    Xem chi tiết đơn hàng
 const getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id).populate('user', 'fullName email');
@@ -352,7 +379,6 @@ const getOrderById = async (req, res) => {
   }
 };
 
-// @desc    Xem tất cả đơn hàng (Admin)
 const getOrders = async (req, res) => {
   try {
     const pageSize = 20;
@@ -376,26 +402,23 @@ const getOrders = async (req, res) => {
   }
 };
 
-// @desc    Cập nhật trạng thái đơn hàng (Admin) - CÓ CỘNG ĐIỂM
-// @route   PUT /api/orders/:id/status
+// @desc    Cập nhật trạng thái đơn hàng (Admin)
+// Merge Decision: Giữ logic của Current để cộng điểm tại đây
 const updateOrderStatus = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id);
         const { status } = req.body;
-
         if (order) {
             const oldStatus = order.status; 
 
             order.status = status;
             order.statusHistory.push({ status: status, updatedAt: new Date() });
-
-            if (status === 'delivered') {
-                order.deliveredAt = Date.now();
-            }
-
+            
+            if (status === 'delivered') order.deliveredAt = Date.now();
+            
             const updatedOrder = await order.save();
 
-            // --- LOGIC CỘNG ĐIỂM ---
+            // --- LOGIC CỘNG ĐIỂM (Giữ từ Current) ---
             // Chỉ cộng khi chuyển từ 'pending' sang 'confirmed' và có User
             if (oldStatus === 'pending' && status === 'confirmed' && order.user) {
                 const user = await User.findById(order.user);
@@ -406,7 +429,7 @@ const updateOrderStatus = async (req, res) => {
                     user.loyaltyPoints = (user.loyaltyPoints || 0) + pointsEarned;
                     await user.save();
                     
-                    console.log(`[Admin Manual] Đã cộng ${pointsEarned} điểm cho user ${user.email}`);
+                    // console.log(`[Admin] Đã cộng ${pointsEarned} điểm cho user ${user.email}`);
                 }
             }
 

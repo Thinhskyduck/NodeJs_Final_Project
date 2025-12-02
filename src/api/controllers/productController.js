@@ -4,6 +4,7 @@ const Product = require('../models/productModel');
 const jwt = require('jsonwebtoken');
 const { indexProduct, removeProduct, searchProductsES } = require('../../config/elastic');
 const Category = require('../models/categoryModel'); // Cần để kiểm tra category
+const User = require('../models/userModel');
 
 // @desc    Tạo sản phẩm mới
 // @route   POST /api/products
@@ -50,79 +51,97 @@ const createProduct = async (req, res) => {
 // @access  Public
 const getProducts = async (req, res) => {
   try {
-    // 1. LỌC (FILTERING)
-    const queryObj = { ...req.query };
-    const excludedFields = ['page', 'sort', 'limit', 'fields', 'keyword'];
-    excludedFields.forEach((el) => delete queryObj[el]);
+    // 1. Lấy các tham số từ query string
+    const { keyword, page, limit, sort, category, brand, price } = req.query;
 
-    // Lọc nâng cao cho khoảng giá (gte, gt, lte, lt)
-    let queryStr = JSON.stringify(queryObj);
-    queryStr = queryStr.replace(/\b(gte|gt|lte|lt)\b/g, (match) => `$${match}`);
-    
-    let filter = JSON.parse(queryStr);
+    // Khởi tạo bộ lọc rỗng
+    let filter = {};
 
-    // Xử lý lọc theo Brand
-    if (req.query.brand) {
-        filter.brand = { $in: req.query.brand.split(',') };
-    }
-
-    // --- XỬ LÝ TÌM KIẾM (ĐOẠN NÀY ĐÃ SỬA) ---
-    if (req.query.keyword) {
+    // 2. Xử lý Tìm kiếm (Keyword)
+    if (keyword) {
       try {
-        // Cách mới: Hỏi Elasticsearch trước
-        const productIds = await searchProductsES(req.query.keyword);
-        
-        // Nếu tìm thấy, lọc Mongo theo danh sách ID trả về
+        // Ưu tiên dùng ElasticSearch nếu có
+        const productIds = await searchProductsES(keyword);
         if (productIds.length > 0) {
             filter._id = { $in: productIds };
         } else {
-            // Nếu Elastic không tìm thấy gì, ép Mongo trả về rỗng luôn (để tránh hiện tất cả)
-            // Bằng cách gán _id là một ID giả không tồn tại
+            // Nếu ES không thấy, trả về rỗng ngay
             filter._id = "000000000000000000000000"; 
         }
       } catch (err) {
-        console.error("⚠️ Elasticsearch lỗi hoặc chưa bật, quay về tìm kiếm thường:", err.message);
-        // Cách cũ (Fallback): Nếu ES lỗi thì dùng Regex như cũ
-        filter.name = {
-          $regex: req.query.keyword,
-          $options: 'i',
-        };
+        // Fallback: Dùng Regex tìm trong tên nếu ES lỗi
+        console.error("ES Error, using Regex fallback:", err.message);
+        filter.name = { $regex: keyword, $options: 'i' };
       }
     }
-    // ----------------------------------------
 
-    let query = Product.find(filter);
-
-    // 2. SẮP XẾP (SORTING)
-    if (req.query.sort) {
-      const sortBy = req.query.sort.split(',').join(' ');
-      query = query.sort(sortBy);
-    } else {
-      query = query.sort('-createdAt');
+    // 3. Xử lý Category
+    if (category) {
+        filter.category = category;
     }
 
-    // 3. PHÂN TRANG (PAGINATION)
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 12;
-    const skip = (page - 1) * limit;
+    // 4. Xử lý Brand (Hỗ trợ nhiều brand cách nhau bằng dấu phẩy)
+    if (brand) {
+        filter.brand = { $in: brand.split(',') };
+    }
 
-    query = query.skip(skip).limit(limit);
+    // 5. Xử lý Price (QUAN TRỌNG: Lọc theo variants.price)
+    // Query string dạng: ?price[gte]=100000&price[lte]=500000
+    if (price) {
+        let priceQuery = {};
+        
+        // Ép kiểu sang Number để MongoDB so sánh đúng
+        if (price.gte) priceQuery.$gte = Number(price.gte);
+        if (price.gt)  priceQuery.$gt  = Number(price.gt);
+        if (price.lte) priceQuery.$lte = Number(price.lte);
+        if (price.lt)  priceQuery.$lt  = Number(price.lt);
 
-    // Lấy tổng số document
+        // Chỉ thêm vào filter nếu có ít nhất 1 điều kiện giá
+        if (Object.keys(priceQuery).length > 0) {
+            // LƯU Ý: Giá nằm trong mảng variants
+            // MongoDB sẽ tìm sản phẩm có ÍT NHẤT 1 variant thỏa mãn điều kiện giá này
+            filter['variants.price'] = priceQuery;
+        }
+    }
+
+    // 6. Xử lý Sắp xếp (Sort)
+    let sortQuery = '-createdAt'; // Mặc định mới nhất
+    if (sort) {
+        const sortParam = sort.split(',').join(' ');
+        // Nếu sort theo price, ta cần trỏ vào variants.price
+        if (sortParam.includes('price')) {
+             // Lưu ý: Sort theo mảng trong Mongo có thể phức tạp, 
+             // nhưng 'variants.price' thường sẽ lấy giá trị nhỏ nhất/lớn nhất trong mảng để sort
+             sortQuery = sortParam.replace('price', 'variants.price');
+        } else {
+             sortQuery = sortParam;
+        }
+    }
+
+    // 7. Phân trang
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 12;
+    const skip = (pageNum - 1) * limitNum;
+
+    // 8. Thực thi Query
     const totalProducts = await Product.countDocuments(filter);
-
-    // Thực thi câu query
-    const products = await query.populate('category', 'name');
+    const products = await Product.find(filter)
+                                  .sort(sortQuery)
+                                  .skip(skip)
+                                  .limit(limitNum)
+                                  .populate('category', 'name');
 
     res.json({
       success: true,
       count: products.length,
       totalProducts,
-      totalPages: Math.ceil(totalProducts / limit),
-      currentPage: page,
+      totalPages: Math.ceil(totalProducts / limitNum),
+      currentPage: pageNum,
       products,
     });
+
   } catch (error) {
+    console.error("Get Products Error:", error);
     res.status(500).json({ message: 'Lỗi máy chủ', error: error.message });
   }
 };
@@ -212,7 +231,7 @@ const createProductReview = async (req, res) => {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             user = await User.findById(decoded.id);
         } catch (e) {
-            // Token lỗi -> Coi như Guest
+            console.error("Lỗi xác thực Token bình luận:", e.message);
         }
     }
 

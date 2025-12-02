@@ -26,7 +26,9 @@ connectDB();
 const setupSwagger = require('./src/config/swagger');
 
 const app = express();
-
+// --- THÊM DÒNG NÀY ---
+app.disable('etag'); 
+// --------------------
 // Cấu hình Passport
 configurePassport();
 app.use(passport.initialize());

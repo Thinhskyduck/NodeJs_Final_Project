@@ -76,7 +76,10 @@ const orderSchema = new mongoose.Schema(
     deliveredAt: {
       type: Date,
     },
+    loyaltyPointsUsed: { type: Number, default: 0 },
+    loyaltyDiscountAmount: { type: Number, default: 0 },
   },
+  
   {
     timestamps: true,
   }
