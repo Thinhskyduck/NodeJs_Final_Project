@@ -169,34 +169,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Hàm gọi API lấy sản phẩm (Có Filter & Sort & Search)
-  // Future<void> _fetchProducts() async {
-  //   setState(() => _isLoading = true);
-  //   try {
-  //     // Map giá trị dropdown sang tham số backend
-  //     String? sortParam;
-  //     if (_sortBy == 'price_asc') sortParam = 'price';
-  //     if (_sortBy == 'price_desc') sortParam = '-price';
-  //     // Nếu là 'newest', backend thường mặc định là -createdAt, hoặc có thể truyền '-createdAt'
-
-  //     final products = await _apiService.fetchProducts(
-  //       limit: 20,
-  //       search: _searchKeyword.isNotEmpty ? _searchKeyword : null,
-  //       sortBy: sortParam, // <-- Đây là chỗ sửa lỗi: truyền tham số sortBy
-  //     );
-      
-  //     if (mounted) {
-  //       setState(() {
-  //         _products = products;
-  //         _isLoading = false;
-  //       });
-  //     }
-  //   } catch (e) {
-  //     print("Lỗi tải sản phẩm: $e");
-  //     if (mounted) setState(() => _isLoading = false);
-  //   }
-  // }
-
   @override
   Widget build(BuildContext context) {
     final bool isWeb = kIsWeb && MediaQuery.of(context).size.width > 800;
@@ -338,7 +310,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Opacity(
               opacity: 0.3,
               child: Image.asset('/images/placeholder.png', fit: BoxFit.cover),
-              // child: Image.network("https://via.placeholder.com/800x400.png?text=COMPUTER+BANNER", fit: BoxFit.cover),
+              
             ),
           ),
           Positioned(
@@ -384,11 +356,9 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Center(
-                  child: Image.asset(
+                  child: buildSmartImage(
                     product.thumbnailUrl,
                     fit: BoxFit.contain,
-                    // Xử lý khi ảnh lỗi thì hiện placeholder
-                    errorBuilder: (c, e, s) => Image.asset('/images/placeholder.png', fit: BoxFit.contain),
                   ),
                 ),
               ),
@@ -443,6 +413,38 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget buildSmartImage(String? url, {BoxFit fit = BoxFit.contain}) {
+    // 1. Xử lý null hoặc rỗng -> Trả về ảnh placeholder
+    if (url == null || url.isEmpty) {
+      return Image.asset(
+        'assets/images/placeholder.png',
+        fit: fit,
+      );
+    }
+
+    // 2. Nếu là ảnh trong máy (Assets)
+    if (url.startsWith('assets/')) {
+      return Image.asset(
+        url,
+        fit: fit,
+        errorBuilder: (context, error, stackTrace) {
+          // Nếu khai báo sai tên file hoặc quên pubspec -> hiện placeholder
+          return Image.asset('assets/images/placeholder.png', fit: fit);
+        },
+      );
+    }
+
+    // 3. Nếu là ảnh mạng (Server/Internet)
+    return Image.network(
+      url,
+      fit: fit,
+      errorBuilder: (context, error, stackTrace) {
+        // Nếu server lỗi hoặc 404 -> hiện placeholder
+        return Image.asset('assets/images/placeholder.png', fit: fit);
+      },
     );
   }
 }

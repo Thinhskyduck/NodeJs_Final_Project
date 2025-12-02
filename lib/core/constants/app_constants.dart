@@ -10,7 +10,7 @@ class AppConstants {
   // Hàm xử lý ảnh thông minh (Hỗ trợ cả Asset local và Ảnh từ Server)
   static String getFullImageUrl(String? relativePath) {
     if (relativePath == null || relativePath.isEmpty) {
-      return 'https://cdn2.cellphones.com.vn/insecure/rs:fill:358:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/g/r/group_744_1_57.png'; // Đảm bảo bạn có ảnh này trong assets
+      return 'assets/images/placeholder.png'; 
     }
     
     // 1. Nếu là đường dẫn Local Asset (như bạn đã lưu trong DB)

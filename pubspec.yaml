@@ -59,3 +59,10 @@ flutter:
     - assets/img/product_img/
     - assets/img/product_thumnail/
     - assets/img/product_variant/
+    - assets/images/
+    - assets/img/laptop/
+    - assets/img/screen/ 
+    - assets/img/mouse/ 
+    - assets/img/keyboard/
+    - assets/img/storage/
+    - assets/img/audio/

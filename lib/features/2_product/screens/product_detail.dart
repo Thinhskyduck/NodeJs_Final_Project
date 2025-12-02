@@ -7,7 +7,6 @@ import '../../../core/constants/app_constants.dart';
 import '../../../data/models/product_model.dart';
 import '../../../data/services/api_service.dart';
 import '../../../data/services/cart_service.dart';
-import '../../3_cart/screens/cart_screen.dart';
 import '../widgets/review_section.dart';
 
 class ProductDetailsScreen2 extends StatefulWidget {
@@ -162,9 +161,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(6),
-                          child: Image.asset(
-                            AppConstants.getFullImageUrl(displayImages[index]),
+                          child: Image.asset( // Hoặc buildSmartImage nếu bạn đã tách widget
+                            displayImages[index], // Đường dẫn ảnh
                             fit: BoxFit.cover,
+                            // Xử lý khi ảnh lỗi: Ẩn đi hoặc hiện placeholder đẹp hơn
+                            errorBuilder: (context, error, stackTrace) {
+                                // Cách 1: Ẩn luôn nếu lỗi (return SizedBox) - Nhưng ListView không thích height=0
+                                // Cách 2: Hiện icon ảnh lỗi nhỏ gọn
+                                return Container(
+                                    color: Colors.grey[200],
+                                    child: const Icon(Icons.image_not_supported, color: Colors.grey)
+                                );
+                            },
                           ),
                         ),
                       ),
