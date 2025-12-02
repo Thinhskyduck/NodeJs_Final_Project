@@ -174,7 +174,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         children: [
                           ClipRRect(
                             borderRadius: BorderRadius.circular(4),
-                            child: Image.network(
+                            child: Image.asset(
                               item.image,
                               width: 60, height: 60, fit: BoxFit.cover,
                               errorBuilder: (c,e,s) => const Icon(Icons.image, size: 60, color: Colors.grey),

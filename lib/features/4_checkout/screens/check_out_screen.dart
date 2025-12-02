@@ -500,7 +500,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
               padding: const EdgeInsets.symmetric(vertical: 8.0),
               child: Row(
                 children: [
-                  Image.network(
+                  Image.asset(
                     imageUrl,
                     width: 60, height: 60, fit: BoxFit.cover,
                     errorBuilder: (c,e,s) => const Icon(Icons.image, size: 60),

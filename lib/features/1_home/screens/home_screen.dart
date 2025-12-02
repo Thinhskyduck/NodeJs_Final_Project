@@ -384,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Center(
-                  child: Image.network(
+                  child: Image.asset(
                     product.thumbnailUrl,
                     fit: BoxFit.contain,
                     // Xử lý khi ảnh lỗi thì hiện placeholder

@@ -68,7 +68,7 @@ class _CartScreenState extends State<CartScreen> {
                               child: Row(
                                 children: [
                                   // Ảnh
-                                  Image.network(
+                                  Image.asset(
                                     item.image,
                                     width: 60,
                                     height: 60,

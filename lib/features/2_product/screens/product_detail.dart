@@ -129,7 +129,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
             Center(
               child: Container(
                 constraints: const BoxConstraints(maxHeight: 400),
-                child: Image.network(
+                child: Image.asset(
                   // Helper xử lý full URL
                   AppConstants.getFullImageUrl(displayImages[_selectedImageIndex]), 
                   fit: BoxFit.contain,
@@ -162,7 +162,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen2> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(6),
-                          child: Image.network(
+                          child: Image.asset(
                             AppConstants.getFullImageUrl(displayImages[index]),
                             fit: BoxFit.cover,
                           ),

@@ -201,7 +201,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Center(
-                  child: Image.network(
+                  child: Image.asset(
                     product.thumbnailUrl, 
                     fit: BoxFit.contain,
                     errorBuilder: (c,e,s) => const Icon(Icons.image, size: 50, color: Colors.grey),
