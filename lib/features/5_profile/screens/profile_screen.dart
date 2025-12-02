@@ -1,11 +1,12 @@
 import 'package:cross_platform_mobile_app_development/features/5_profile/screens/address_list_screen.dart';
+import 'package:cross_platform_mobile_app_development/features/5_profile/screens/change_profile.dart' hide AddressListScreen;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../core/constants/app_constants.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/services/api_service.dart';
 import '../../0_authentication/screens/login.dart';
 import 'order_history_screen.dart'; // Import file vừa tạo
+
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -123,6 +124,24 @@ class _AccountPageState extends State<AccountPage> {
                       )
                     ],
                   ),
+                ),
+                // <--- 2. THÊM NÚT SỬA PROFILE TẠI ĐÂY
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.blue),
+                  onPressed: () async {
+                    // Chuyển sang trang ChangeProfile
+                    final result = await Navigator.push(
+                      context, 
+                      MaterialPageRoute(
+                        builder: (_) => ChangeProfile(uid: _user!.id) // Truyền ID user sang
+                      )
+                    );
+                    
+                    // Nếu bên kia trả về true (đã update thành công), thì load lại profile ngay
+                    if (result == true) {
+                      _fetchProfile();
+                    }
+                  },
                 )
               ],
             ),

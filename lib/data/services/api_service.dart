@@ -86,8 +86,7 @@ class ApiService {
   }
 
   // --- PRODUCTS ---
-  // Trong lib/data/services/api_service.dart
-
+  // Hàm lấy danh sách sản phẩm với phân trang, tìm kiếm, sắp xếp, lọc
   Future<List<Product>> fetchProducts({
     int page = 1,
     int limit = 12, // Web nên hiện nhiều hơn (ví dụ 12)
@@ -149,6 +148,7 @@ class ApiService {
     }
   }
 
+  // Lấy chi tiết sản phẩm
   Future<Product?> getProductDetail(String id) async {
     try {
       final response = await http.get(
@@ -171,6 +171,7 @@ class ApiService {
   Future<List<Product>> fetchBestSellingProducts({int limit = 10}) => fetchProducts(limit: limit);
   Future<List<Product>> fetchPromotionalProducts({int limit = 10}) => fetchProducts(limit: limit);
   
+  // --- SEARCH SUGGESTIONS ---
   Future<List<ProductListItem>> fetchProductSuggestions(String query, {int limit = 5}) async {
     final products = await fetchProducts(search: query, limit: limit);
     return products.map((p) => ProductListItem(
@@ -401,6 +402,7 @@ class ApiService {
     }
   }
 
+  // ADDRESS MANAGEMENT
   // Thêm địa chỉ mới
   Future<bool> addAddress(String addressLine, String city, String postalCode, String country) async {
     try {
@@ -417,6 +419,20 @@ class ApiService {
       return response.statusCode == 201;
     } catch (e) {
       print('Add address error: $e');
+      return false;
+    }
+  }
+
+  // Xóa địa chỉ
+  Future<bool> deleteAddress(String addressId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('${AppConstants.baseUrl}/users/addresses/$addressId'),
+        headers: await _getHeaders(),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Delete address error: $e');
       return false;
     }
   }
@@ -552,6 +568,51 @@ class ApiService {
       };
     } else {
       throw Exception('Failed to load catalog');
+    }
+  }
+
+  // --- UPDATE PROFILE ---
+  // Thêm hàm này vào ApiService để gọi từ ChangeProfile
+  Future<Map<String, dynamic>> updateUserProfile(String fullName, String phoneNumber) async {
+    try {
+      final response = await http.put(
+        Uri.parse('${AppConstants.baseUrl}/users/profile'),
+        headers: await _getHeaders(), // Tự động lấy Token
+        body: jsonEncode({
+          'fullName': fullName,
+          'phoneNumber': phoneNumber, 
+        }),
+      );
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (response.statusCode == 200) {
+        // Nếu cập nhật thành công, cập nhật lại cả cache trong SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_fullName', fullName);
+        
+        return {'success': true, 'message': 'Cập nhật hồ sơ thành công!'};
+      } else {
+        return {
+          'success': false, 
+          'message': data['message'] ?? data['detail'] ?? 'Cập nhật thất bại.'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Lỗi kết nối: $e'};
+    }
+  }
+
+  // --- HÀM ĐẶT ĐỊA CHỈ MẶC ĐỊNH ---
+  Future<bool> setDefaultAddress(String addressId) async {
+    try {
+      final response = await http.put(
+        Uri.parse('${AppConstants.baseUrl}/users/addresses/$addressId/default'),
+        headers: await _getHeaders(),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
     }
   }
 }

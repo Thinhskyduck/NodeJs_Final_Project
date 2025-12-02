@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'login.dart';
-// 1. Import AppConstants
 import '../../../core/constants/app_constants.dart';
 
 class SignUp extends StatefulWidget {
@@ -13,34 +12,52 @@ class SignUp extends StatefulWidget {
 }
 
 class _SignUpState extends State<SignUp> {
+  // Controllers cho thông tin cá nhân
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController fullNameController = TextEditingController();
   final TextEditingController phoneNumberController = TextEditingController();
-  final TextEditingController addressController = TextEditingController();
+  
+  // Controllers mới cho địa chỉ
+  final TextEditingController _cityController = TextEditingController(); 
+  final TextEditingController _detailAddressController = TextEditingController(); 
 
   bool _obscureText = true;
   String errorMessage = "";
   bool isLoading = false;
 
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    fullNameController.dispose();
+    phoneNumberController.dispose();
+    _cityController.dispose();
+    _detailAddressController.dispose();
+    super.dispose();
+  }
+
   Future<void> signUp() async {
-    // Validate
+    // 1. Validate: Kiểm tra tất cả các trường, bao gồm 2 trường địa chỉ mới
     if (emailController.text.trim().isEmpty ||
         passwordController.text.trim().isEmpty ||
         fullNameController.text.trim().isEmpty ||
         phoneNumberController.text.trim().isEmpty ||
-        addressController.text.trim().isEmpty) {
+        _cityController.text.trim().isEmpty ||
+        _detailAddressController.text.trim().isEmpty) {
       setState(() {
-        errorMessage = "Vui lòng điền đầy đủ thông tin (bao gồm địa chỉ).";
+        errorMessage = "Vui lòng điền đầy đủ thông tin (bao gồm Tỉnh và Địa chỉ chi tiết).";
       });
       return;
     }
+
     if (!emailController.text.contains('@')) {
       setState(() {
         errorMessage = "Địa chỉ email không hợp lệ.";
       });
       return;
     }
+
     if (passwordController.text.trim().length < 6) {
       setState(() {
         errorMessage = "Mật khẩu phải có ít nhất 6 ký tự.";
@@ -54,22 +71,28 @@ class _SignUpState extends State<SignUp> {
     });
 
     try {
-      // 2. Sử dụng AppConstants.baseUrl
-      // Route backend là: /api/users/register
-      // AppConstants.baseUrl đã là ".../api" nên ta chỉ cần nối thêm "/users/register"
+      // 2. Cấu trúc lại Body JSON gửi lên Server
+      final Map<String, dynamic> requestBody = {
+        "email": emailController.text.trim(),
+        "fullName": fullNameController.text.trim(),
+        "phone_number": phoneNumberController.text.trim(),
+        "password": passwordController.text.trim(),
+        // Object address lồng nhau theo yêu cầu mới
+        "shippingAddress": {
+           "addressLine": _detailAddressController.text.trim(), // VD: 71, Xã Nhị Long
+           "city": _cityController.text.trim(),                 // VD: Vĩnh Long
+           "postalCode": "70000",                               // Mặc định hoặc cho nhập nếu cần
+           "country": "Vietnam"                                 // Mặc định
+        }
+      };
+
       final response = await http.post(
         Uri.parse('${AppConstants.baseUrl}/users/register'),
         headers: {
           'accept': 'application/json',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({
-          "email": emailController.text.trim(),
-          "fullName": fullNameController.text.trim(),
-          "phone_number": phoneNumberController.text.trim(),
-          "password": passwordController.text.trim(),
-          "address": addressController.text.trim(),
-        }),
+        body: jsonEncode(requestBody),
       );
 
       if (response.statusCode == 201) {
@@ -84,6 +107,8 @@ class _SignUpState extends State<SignUp> {
       } else {
         final errorData = jsonDecode(response.body);
         String apiErrorMessage = 'Lỗi không xác định từ server.';
+        
+        // Xử lý thông báo lỗi linh hoạt
         if (errorData['message'] != null) {
           apiErrorMessage = errorData['message'].toString();
         } else if (errorData['detail'] != null) {
@@ -96,7 +121,7 @@ class _SignUpState extends State<SignUp> {
       }
     } catch (e) {
       setState(() {
-        errorMessage = "Đã xảy ra lỗi kết nối hoặc xử lý: ${e.toString()}";
+        errorMessage = "Đã xảy ra lỗi kết nối: ${e.toString()}";
       });
     } finally {
       if (mounted) {
@@ -187,13 +212,43 @@ class _SignUpState extends State<SignUp> {
                     ),
                     const SizedBox(height: 18),
 
+                    // --- CẬP NHẬT GIAO DIỆN ĐỊA CHỈ MỚI ---
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Divider(color: Colors.grey[300]),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                          child: Text("Shipping Address", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                        ),
+                        Expanded(
+                          child: Divider(color: Colors.grey[300]),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // 1. Ô nhập Tỉnh/Thành phố
                     _buildTextField(
-                      controller: addressController,
-                      hintText: "Shipping Address",
-                      icon: Icons.location_on_outlined,
+                      controller: _cityController,
+                      hintText: "City / Province (e.g. Can Tho)",
+                      icon: Icons.location_city,
                       primaryColor: primaryColor,
                       lightBackgroundColor: lightBackgroundColor,
                     ),
+                    const SizedBox(height: 18),
+
+                    // 2. Ô nhập Địa chỉ chi tiết
+                    _buildTextField(
+                      controller: _detailAddressController,
+                      hintText: "Street, Ward, House No.",
+                      icon: Icons.home_outlined,
+                      primaryColor: primaryColor,
+                      lightBackgroundColor: lightBackgroundColor,
+                    ),
+                    // ----------------------------------------
+                    
                     const SizedBox(height: 18),
 
                     _buildPasswordField(

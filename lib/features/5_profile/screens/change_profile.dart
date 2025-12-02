@@ -1,13 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-
-import 'package:cross_platform_mobile_app_development/core/constants/app_constants.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import '../../../data/services/api_service.dart';
+import 'address_list_screen.dart'; 
 
 class ChangeProfile extends StatefulWidget {
-  final String uid;
+  // Không cần truyền uid nữa vì ApiService tự lấy từ Token, 
+  // nhưng nếu bạn muốn giữ để tương thích code cũ thì cứ để.
+  final String uid; 
 
   const ChangeProfile({super.key, required this.uid});
 
@@ -17,12 +16,13 @@ class ChangeProfile extends StatefulWidget {
 
 class _ChangeProfileState extends State<ChangeProfile> {
   final _formKey = GlobalKey<FormState>();
+  final ApiService _apiService = ApiService(); // Khởi tạo Service
+
   bool _isLoading = true;
   String? _errorMessage;
 
   late TextEditingController _fullNameController;
   late TextEditingController _phoneController;
-  late TextEditingController _addressController;
   late TextEditingController _emailController;
 
   @override
@@ -30,7 +30,6 @@ class _ChangeProfileState extends State<ChangeProfile> {
     super.initState();
     _fullNameController = TextEditingController();
     _phoneController = TextEditingController();
-    _addressController = TextEditingController();
     _emailController = TextEditingController();
     _loadUserData();
   }
@@ -39,64 +38,39 @@ class _ChangeProfileState extends State<ChangeProfile> {
   void dispose() {
     _fullNameController.dispose();
     _phoneController.dispose();
-    _addressController.dispose();
     _emailController.dispose();
     super.dispose();
   }
 
+  // Hàm load dữ liệu dùng ApiService
   Future<void> _loadUserData() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
-    print("ChangeProfile: Loading user data for backend ID: ${widget.uid}");
     try {
-      final apiUrl = Uri.parse('${AppConstants.baseUrl}/users/profile');
-      final response = await http.get(
-        apiUrl,
-        headers: {
-          'accept': 'application/json',
-          'X-User-ID': widget.uid,
-        },
-      ).timeout(const Duration(seconds: 15));
+      // Gọi hàm có sẵn trong ApiService
+      final userModel = await _apiService.getUserProfile();
 
       if (!mounted) return;
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        print("ChangeProfile: User data received: $data");
+      if (userModel != null) {
         setState(() {
-          _fullNameController.text = data['full_name'] ?? '';
-          _phoneController.text = data['phone_number'] ?? '';
-          _addressController.text = data['shipping_address'] ?? '';
-          _emailController.text = data['email'] ?? '';
+          _fullNameController.text = userModel.fullName;
+          _emailController.text = userModel.email;
         });
       } else {
-        print(
-            "ChangeProfile: Error loading data - Status: ${response.statusCode}, Body: ${response.body}");
         setState(() {
-          _errorMessage = "Lỗi tải dữ liệu người dùng (${response.statusCode}).";
+          _errorMessage = "Không tải được thông tin người dùng.";
         });
       }
-    } on TimeoutException {
-      if (!mounted) return;
-      print("ChangeProfile: Timeout loading data.");
-      setState(() {
-        _errorMessage = "Hết thời gian tải dữ liệu.";
-      });
-    } on SocketException {
-      if (!mounted) return;
-      print("ChangeProfile: Network error loading data.");
-      setState(() {
-        _errorMessage = "Lỗi mạng khi tải dữ liệu.";
-      });
     } catch (e) {
-      if (!mounted) return;
-      print("ChangeProfile: Unexpected error loading data: $e");
-      setState(() {
-        _errorMessage = "Lỗi không xác định khi tải dữ liệu.";
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = "Lỗi: $e";
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -106,6 +80,7 @@ class _ChangeProfileState extends State<ChangeProfile> {
     }
   }
 
+  // Hàm lưu dữ liệu dùng ApiService
   Future<void> _saveProfile() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
@@ -113,82 +88,28 @@ class _ChangeProfileState extends State<ChangeProfile> {
         _errorMessage = null;
       });
 
-      print("ChangeProfile: Saving profile for backend ID: ${widget.uid}");
-      try {
-        final apiUrl = Uri.parse('${AppConstants.baseUrl}/users/profile');
-        final body = jsonEncode({
-          "full_name": _fullNameController.text.trim(),
-          "phone_number": _phoneController.text.trim(),
-          "shipping_address": _addressController.text.trim(),
-        });
-        print("ChangeProfile: Request body: $body");
+      // Gọi hàm mới thêm trong ApiService
+      final result = await _apiService.updateUserProfile(
+        _fullNameController.text.trim(),
+        _phoneController.text.trim(),
+      );
 
-        final response = await http.put(
-          apiUrl,
-          headers: {
-            'accept': 'application/json',
-            'X-User-ID': widget.uid,
-            'Content-Type': 'application/json',
-          },
-          body: body,
-        ).timeout(const Duration(seconds: 15));
+      if (!mounted) return;
 
-        if (!mounted) return;
-
-        print(
-            "ChangeProfile: Save response status: ${response.statusCode}, body: ${response.body}");
-        if (response.statusCode == 200) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Cập nhật hồ sơ thành công!'),
-                backgroundColor: Colors.green,
-              ),
-            );
-            Navigator.of(context).pop(true);
-          }
-        } else {
-          String errorMsg = "Lỗi cập nhật hồ sơ (${response.statusCode}).";
-          try {
-            final errorData = jsonDecode(response.body);
-            errorMsg +=
-            " ${errorData['detail'] ?? errorData['message'] ?? 'Vui lòng thử lại.'}";
-          } catch (_) {
-            errorMsg += " Vui lòng thử lại.";
-          }
-          if (mounted) {
-            setState(() {
-              _errorMessage = errorMsg;
-            });
-          }
-        }
-      } on TimeoutException {
-        if (!mounted) return;
-        print("ChangeProfile: Timeout saving profile.");
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message']),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).pop(true); // Trả về true để màn hình trước reload
+      } else {
         setState(() {
-          _errorMessage = "Hết thời gian cập nhật.";
+          _errorMessage = result['message'];
+          _isLoading = false;
         });
-      } on SocketException {
-        if (!mounted) return;
-        print("ChangeProfile: Network error saving profile.");
-        setState(() {
-          _errorMessage = "Lỗi mạng khi lưu.";
-        });
-      } catch (e) {
-        if (!mounted) return;
-        print("ChangeProfile: Unexpected error saving profile: $e");
-        setState(() {
-          _errorMessage = "Lỗi không xác định khi lưu.";
-        });
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
       }
-    } else {
-      print("ChangeProfile: Form validation failed.");
     }
   }
 
@@ -200,169 +121,124 @@ class _ChangeProfileState extends State<ChangeProfile> {
       appBar: AppBar(
         backgroundColor: Colors.blue[700],
         title: const Text("Chỉnh sửa Hồ sơ"),
+        foregroundColor: Colors.white,
       ),
       body: _isLoading && _errorMessage == null
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_errorMessage != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .errorContainer
-                          .withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .error
-                            .withOpacity(0.5),
+              padding: const EdgeInsets.all(20.0),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.red[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red[200]!)
+                          ),
+                          child: Text(
+                            _errorMessage!,
+                            style: TextStyle(color: Colors.red[700]),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
                       ),
-                    ),
-                    child: Text(
-                      _errorMessage!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                        fontSize: 14,
+                    
+                    // --- Họ và tên ---
+                    TextFormField(
+                      controller: _fullNameController,
+                      decoration: InputDecoration(
+                        labelText: "Họ và tên",
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        prefixIcon: const Icon(Icons.person_outline),
                       ),
-                      textAlign: TextAlign.center,
+                      validator: (value) => (value == null || value.trim().isEmpty) 
+                          ? 'Vui lòng nhập họ và tên' : null,
                     ),
-                  ),
-                ),
-              TextFormField(
-                controller: _fullNameController,
-                decoration: InputDecoration(
-                  labelText: "Họ và tên",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  prefixIcon: const Icon(Icons.person_outline),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Vui lòng nhập họ và tên';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: _phoneController,
-                decoration: InputDecoration(
-                  labelText: "Số điện thoại",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  prefixIcon: const Icon(Icons.phone_outlined),
-                ),
-                keyboardType: TextInputType.phone,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Vui lòng nhập số điện thoại';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: _addressController,
-                decoration: InputDecoration(
-                  labelText: "Địa chỉ giao hàng",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  prefixIcon: const Icon(Icons.location_on_outlined),
-                ),
-                maxLines: null,
-                minLines: 1,
-                keyboardType: TextInputType.multiline,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Vui lòng nhập địa chỉ giao hàng';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: _emailController,
-                decoration: InputDecoration(
-                  labelText: "Email (Không thể thay đổi)",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey.shade400),
-                  ),
-                  prefixIcon: const Icon(Icons.email_outlined),
-                  filled: true,
-                  fillColor: Colors.grey.shade100,
-                ),
-                readOnly: true,
-                enabled: false,
-                style: TextStyle(color: Colors.grey.shade700),
-              ),
-              const SizedBox(height: 35),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _saveProfile,
-                style: ButtonStyle(
-                  backgroundColor: MaterialStateProperty.resolveWith<Color>(
-                        (Set<MaterialState> states) {
-                      if (states.contains(MaterialState.disabled)) {
-                        return primaryColor.withOpacity(0.5);
-                      }
-                      return primaryColor;
-                    },
-                  ),
-                  foregroundColor: MaterialStateProperty.resolveWith<Color>(
-                        (Set<MaterialState> states) {
-                      if (states.contains(MaterialState.disabled)) {
-                        return Colors.white.withOpacity(0.8);
-                      }
-                      return Colors.white;
-                    },
-                  ),
-                  padding: MaterialStateProperty.all<EdgeInsets>(
-                    const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  shape: MaterialStateProperty.all<RoundedRectangleBorder>(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                    const SizedBox(height: 20),
+
+                    // --- Số điện thoại ---
+                    TextFormField(
+                      controller: _phoneController,
+                      decoration: InputDecoration(
+                        labelText: "Số điện thoại",
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        prefixIcon: const Icon(Icons.phone_outlined),
+                      ),
+                      keyboardType: TextInputType.phone,
+                      validator: (value) => (value == null || value.trim().isEmpty) 
+                          ? 'Vui lòng nhập số điện thoại' : null,
                     ),
-                  ),
-                  textStyle: MaterialStateProperty.all<TextStyle>(
-                    const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                    const SizedBox(height: 20),
+
+                    // --- QUẢN LÝ ĐỊA CHỈ (Nút bấm) ---
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      shape: RoundedRectangleBorder(
+                        side: BorderSide(color: Colors.grey.shade400),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      leading: const Icon(Icons.location_on_outlined, color: Colors.blue),
+                      title: const Text(
+                        "Quản lý địa chỉ giao hàng",
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                      onTap: () {
+                        Navigator.push(
+                          context, 
+                          MaterialPageRoute(builder: (_) => const AddressListScreen())
+                        );
+                      },
                     ),
-                  ),
-                  elevation: MaterialStateProperty.all<double>(2),
+                    const SizedBox(height: 20),
+
+                    // --- Email (Read Only) ---
+                    TextFormField(
+                      controller: _emailController,
+                      decoration: InputDecoration(
+                        labelText: "Email (Không thể thay đổi)",
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: Colors.grey.shade400),
+                        ),
+                        prefixIcon: const Icon(Icons.email_outlined),
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                      ),
+                      readOnly: true,
+                      enabled: false,
+                    ),
+                    const SizedBox(height: 35),
+
+                    // --- Nút Lưu ---
+                    ElevatedButton(
+                      onPressed: _isLoading ? null : _saveProfile,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 20, width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                            )
+                          : const Text("Lưu thay đổi", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
                 ),
-                child: _isLoading
-                    ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    valueColor:
-                    AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-                    : const Text("Lưu thay đổi"),
               ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 }

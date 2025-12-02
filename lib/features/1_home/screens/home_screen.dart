@@ -204,7 +204,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: HomeScreen.themePageBackground,
       appBar: PreferredSize(
-        preferredSize: Size.fromHeight(isWeb ? 140 : 130 + MediaQuery.of(context).padding.top),
+        preferredSize: Size.fromHeight(isWeb ? 80 : 60 + MediaQuery.of(context).padding.top),
         child: Column(
           children: [
             CustomHeader(
@@ -215,26 +215,6 @@ class _HomeScreenState extends State<HomeScreen> {
               onAccountPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountPage())),
               onLogoTap: _initData,
             ),
-             Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: SizedBox(
-                height: 45,
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: "Tìm Laptop, VGA, RAM...",
-                    prefixIcon: const Icon(Icons.search),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                    fillColor: Colors.grey.shade100,
-                    filled: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                  ),
-                  onSubmitted: (value) {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => CatalogScreen(initialSearch: value)));
-                  },
-                ),
-              ),
-            )
           ],
         ),
       ),

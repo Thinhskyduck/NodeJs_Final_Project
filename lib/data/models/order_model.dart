@@ -69,6 +69,17 @@ class OrderModel {
   final String address;
   final List<OrderStatusHistory> statusHistory; // <--- MỚI THÊM
 
+  // <--- MỚI THÊM: Các trường chi tiết giá ---
+  final int itemsPrice;   // Tổng tiền hàng gốc
+  final int shippingPrice; // Phí ship
+  final int discountAmount; // Tiền giảm từ Voucher (nếu có)
+  final String? discountCode; // Mã voucher (nếu có)
+  // ------------------------------------------
+  // <--- MỚI THÊM 2 TRƯỜNG NÀY ---
+  final int loyaltyPointsUsed;      // Số điểm đã dùng
+  final int loyaltyDiscountAmount;  // Số tiền được giảm từ điểm
+  // -----------------------------
+
   OrderModel({
     required this.id,
     required this.totalPrice,
@@ -77,6 +88,15 @@ class OrderModel {
     required this.items,
     required this.address,
     required this.statusHistory, // <--- MỚI THÊM
+    // <--- MỚI THÊM ---
+    required this.itemsPrice,
+    required this.shippingPrice,
+    this.discountAmount = 0,
+    this.discountCode,
+    // -----------------
+    this.loyaltyPointsUsed = 0,
+    this.loyaltyDiscountAmount = 0,
+    // -----------------
   });
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
@@ -93,7 +113,17 @@ class OrderModel {
     String addrString = '';
     if (json['shippingAddress'] != null) {
       final addr = json['shippingAddress'];
+      // Nối chuỗi địa chỉ đầy đủ để hiển thị
       addrString = "${addr['addressLine']}, ${addr['city']}";
+      if (addr['postalCode'] != null) addrString += " - ${addr['postalCode']}";
+    }
+
+    // Parse discount info
+    int discountAmt = 0;
+    String? code;
+    if (json['discount'] != null) {
+      discountAmt = json['discount']['amount'] ?? 0;
+      code = json['discount']['code'];
     }
 
     return OrderModel(
@@ -104,6 +134,16 @@ class OrderModel {
       items: parsedItems,
       address: addrString,
       statusHistory: parsedHistory, // <--- MỚI THÊM
+      // <--- Map dữ liệu MỚI ---
+      itemsPrice: json['itemsPrice'] ?? 0,
+      shippingPrice: json['shippingPrice'] ?? 0,
+      discountAmount: discountAmt,
+      discountCode: code,
+      // -----------------------
+      // <--- Map dữ liệu MỚI từ JSON ---
+      loyaltyPointsUsed: json['loyaltyPointsUsed'] ?? 0,
+      loyaltyDiscountAmount: json['loyaltyDiscountAmount'] ?? 0,
+      // --------------------------------
     );
   }
   

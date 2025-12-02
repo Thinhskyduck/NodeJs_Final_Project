@@ -204,7 +204,9 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
               },
               'paymentMethod': widget.previewOrderData['payment_method'],
               'discountCode': couponCode,
-              'useLoyaltyPoints': pointsUsed > 0 
+              
+              // [SỬA 1]: Gửi số điểm cụ thể, đổi tên key thành pointsToUse
+              'pointsToUse': pointsUsed, 
             }),
          );
       } else {
@@ -214,7 +216,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
             "product": item['product_id'],
             "variant": item['variant_id'],
             "quantity": item['quantity'],
-            "price": item['price_at_purchase'], // Giá lấy từ CartItem
+            "price": item['price_at_purchase'],
             "name": item['variant']['name'], 
             "image": item['variant']['image_url'] 
          }).toList();
@@ -236,6 +238,9 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
               },
               'paymentMethod': widget.previewOrderData['payment_method'],
               'cartItems': guestItems,
+              
+              // [SỬA 2]: Bổ sung gửi mã giảm giá cho Guest (nếu có)
+              'discountCode': couponCode, 
             }),
          );
       }
@@ -248,7 +253,6 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
              await prefs.remove('LOCAL_CART_DATA');
           }
           
-          // --- HIỂN THỊ MÀN HÌNH THÀNH CÔNG (Success Screen) ---
           final responseData = jsonDecode(response.body);
           _showSuccessDialog(responseData); 
 
@@ -534,8 +538,8 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
   Widget _buildOrderSummaryCard() {
     String formatCurrency(double amount, {bool showSign = false}) {
       String sign = "";
-      if (showSign) {
-        sign = amount >= 0 ? "" : "- "; // Chỉ thêm dấu trừ
+      if (showSign && amount > 0) {
+        sign = "-"; // Chỉ thêm dấu trừ nếu có giảm giá
       }
       String value = amount.abs().toStringAsFixed(0).replaceAllMapped(
           RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.');
@@ -544,11 +548,13 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
 
     final subtotal = double.tryParse(widget.previewOrderData['subtotal']?.toString() ?? '0') ?? 0.0;
     final shippingFee = double.tryParse(widget.previewOrderData['shipping_fee']?.toString() ?? '0') ?? 0.0;
+    
+    // <--- MỚI: Lấy thông tin giảm giá chi tiết
     final couponDiscount = double.tryParse(widget.previewOrderData['coupon_discount_amount']?.toString() ?? '0') ?? 0.0;
     final loyaltyDiscount = double.tryParse(widget.previewOrderData['loyalty_discount_amount']?.toString() ?? '0') ?? 0.0;
+    
     final totalAmount = double.tryParse(widget.previewOrderData['total_amount']?.toString() ?? '0') ?? 0.0;
     final String? appliedCouponCode = (widget.previewOrderData['applied_coupon'] as Map<String, dynamic>?)?['code'] as String?;
-
 
     return Card(
       elevation: 1,
@@ -558,36 +564,28 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // Không cần nhập mã giảm giá ở đây nữa
-            // Row(children: [ ... TextFormField ... TextButton("Áp dụng") ... ]),
-            // const Divider(height: 20),
             _buildSummaryRow("Số lượng sản phẩm", _cartItemCount.toString()),
             _buildSummaryRow("Tiền hàng (tạm tính)", formatCurrency(subtotal)),
             _buildSummaryRow(
                 "Phí vận chuyển",
                 shippingFee == 0.0 ? "Miễn phí" : formatCurrency(shippingFee)),
 
-            // Hiển thị giảm giá S-Student nếu API trả về
-            // if (widget.previewOrderData['s_student_discount'] != null && widget.previewOrderData['s_student_discount'] != 0.0)
-            //   _buildSummaryRow(
-            //     "Giảm S-Student",
-            //     formatCurrency(widget.previewOrderData['s_student_discount'].toDouble(), showSign: true),
-            //     valueColor: AppColors.primaryRed,
-            //     subtitle: "Quyền lợi Học sinh - Sinh viên",
-            //   ),
-
+            // <--- MỚI: Hiển thị dòng giảm giá Coupon
             if (couponDiscount > 0.0)
               _buildSummaryRow(
-                "Giảm giá coupon ${appliedCouponCode != null ? '($appliedCouponCode)' : ''}",
-                formatCurrency(couponDiscount, showSign: true), // couponDiscount đã là số âm hoặc 0 từ API
-                valueColor: AppColors.primaryRed,
+                "Mã giảm giá ${appliedCouponCode != null ? '($appliedCouponCode)' : ''}",
+                formatCurrency(couponDiscount, showSign: true),
+                valueColor: Colors.green, // Màu xanh cho giảm giá
               ),
+              
+            // <--- MỚI: Hiển thị dòng giảm giá Điểm
             if (loyaltyDiscount > 0.0)
               _buildSummaryRow(
-                "Giảm giá điểm tích lũy (${widget.previewOrderData['loyalty_points_used']} điểm)",
-                formatCurrency(loyaltyDiscount, showSign: true), // loyaltyDiscount đã là số âm hoặc 0
-                valueColor: AppColors.primaryRed,
+                "Tiêu điểm tích lũy",
+                formatCurrency(loyaltyDiscount, showSign: true),
+                valueColor: Colors.green, // Màu xanh cho giảm giá
               ),
+              
             const Divider(height: 20),
             _buildSummaryRow(
               "Tổng tiền",
@@ -595,23 +593,18 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
               isTotal: true,
               subtitle: "(đã gồm VAT)",
             ),
-            if (widget.previewOrderData['loyalty_points_earned'] != null && widget.previewOrderData['loyalty_points_earned'] > 0) ...[
-              const SizedBox(height: 8),
-              _buildSummaryRow(
+            
+            // Hiển thị điểm nhận được
+            if (widget.previewOrderData['items'] != null) ...[
+               const SizedBox(height: 8),
+               // Tính tạm điểm nhận được (Backend tính: itemsPrice / 10000)
+               // Ở đây ta hiển thị ước tính
+                _buildSummaryRow(
                 "Điểm tích lũy nhận được",
-                "${widget.previewOrderData['loyalty_points_earned']} điểm",
-                valueColor: Colors.green.shade700,
+                "+${(subtotal / 10000).floor()} điểm",
+                valueColor: Colors.orange[700],
               ),
-            ],
-            // Hiển thị mã đơn hàng nếu API /preview trả về (thường thì không, API /checkout mới trả về)
-            // if (widget.previewOrderData['order_code'] != null) ...[
-            //   const Divider(height: 20),
-            //   _buildSummaryRow(
-            //     "Mã đơn hàng (tạm)",
-            //     widget.previewOrderData!['order_code'],
-            //     valueColor: AppColors.textBlack,
-            //   ),
-            // ],
+            ]
           ],
         ),
       ),

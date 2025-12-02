@@ -18,7 +18,8 @@ class _CatalogScreenState extends State<CatalogScreen> {
   final ApiService _apiService = ApiService();
   List<Product> _products = [];
   bool _isLoading = true;
-
+  // Thêm controller để quản lý text
+  final TextEditingController _searchController = TextEditingController();
   // --- PAGINATION STATE ---
   int _currentPage = 1;
   int _totalPages = 1;
@@ -26,7 +27,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
 
   // --- FILTER STATE ---
   String _sortBy = "-createdAt";
-  RangeValues _priceRange = const RangeValues(0, 50000000);
+  RangeValues _priceRange = const RangeValues(0, 100000000);
   final double _maxPriceLimit = 100000000;
   final List<String> _brands = ["Acer", "Asus", "Dell", "HP", "Apple", "Samsung", "MSI", "Lenovo"];
   String? _selectedBrand;
@@ -34,6 +35,10 @@ class _CatalogScreenState extends State<CatalogScreen> {
   @override
   void initState() {
     super.initState();
+    // Gán giá trị ban đầu nếu có
+    if (widget.initialSearch != null) {
+      _searchController.text = widget.initialSearch!;
+    }
     _fetchProducts();
   }
 
@@ -44,7 +49,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
       final result = await _apiService.fetchProductsForCatalog(
         limit: _limit,
         page: _currentPage, // Truyền trang hiện tại
-        search: widget.initialSearch,
+        search: _searchController.text.isNotEmpty ? _searchController.text : widget.initialSearch,
         categoryId: widget.categoryId,
         sortBy: _sortBy,
         minPrice: _priceRange.start,
@@ -114,7 +119,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
     );
   }
 
-  // ... (Giữ nguyên _buildFilterDrawer và _buildProductCard cũ) ...
+  // (Giữ nguyên _buildFilterDrawer và _buildProductCard cũ) ...
   Widget _buildFilterDrawer() {
      // ... Copy code Drawer cũ vào đây ...
      // (Để ngắn gọn tôi không paste lại đoạn Drawer, bạn giữ nguyên code cũ)
@@ -239,7 +244,32 @@ class _CatalogScreenState extends State<CatalogScreen> {
     return Scaffold(
       endDrawer: _buildFilterDrawer(),
       appBar: AppBar(
-        title: const Text("Danh sách sản phẩm"),
+        title: Container(
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: TextField(
+            controller: _searchController,
+            decoration: const InputDecoration(
+              hintText: "Tìm sản phẩm...",
+              prefixIcon: Icon(Icons.search, size: 20, color: Colors.grey),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(vertical: 10),
+            ),
+            // Khi nhấn Enter thì tìm kiếm mới
+            onSubmitted: (val) {
+              setState(() {
+                // Cập nhật lại initialSearch của widget cha (hoặc dùng biến local để fetch)
+                // Ở đây ta gọi fetch trực tiếp với từ khóa mới
+                _currentPage = 1;
+              });
+              // Cần sửa hàm _fetchProducts để ưu tiên lấy từ controller
+              _fetchProducts(); 
+            },
+          ),
+        ),
         actions: [
           Builder(
             builder: (ctx) => IconButton(

@@ -113,7 +113,13 @@ class CustomHeader extends StatelessWidget {
         ),
         Row(
           children: [
-            IconButton(icon: const Icon(Icons.search, color: Colors.white), onPressed: () {}), // Mobile search có thể mở dialog
+            IconButton(
+              icon: const Icon(Icons.search, color: Colors.white), 
+              onPressed: () {
+                // Chuyển sang màn hình Catalog để user tìm kiếm
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const CatalogScreen()));
+              }
+            ), 
             IconButton(icon: const Icon(Icons.shopping_cart, color: Colors.white), onPressed: onCartPressed),
             IconButton(icon: const Icon(Icons.person, color: Colors.white), onPressed: onAccountPressed),
           ],
