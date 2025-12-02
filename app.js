@@ -15,6 +15,7 @@ const discountRoutes = require('./src/api/routes/discountRoutes');
 const dashboardRoutes = require('./src/api/routes/dashboardRoutes'); 
 const adminRoutes = require('./src/api/routes/adminRoutes');
 const authRoutes = require('./src/api/routes/authRoutes'); 
+const paymentRoutes = require('./src/api/routes/paymentRoutes');
 
 // Nạp các biến môi trường từ file .env
 dotenv.config();
@@ -52,5 +53,6 @@ app.use('/api/discounts', discountRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/payment', paymentRoutes);
 
 module.exports = app;

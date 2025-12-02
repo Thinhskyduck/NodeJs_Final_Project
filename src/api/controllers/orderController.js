@@ -367,15 +367,38 @@ const getOrders = async (req, res) => {
   }
 };
 
+// @desc    Cập nhật trạng thái đơn hàng (Admin)
+// @route   PUT /api/orders/:id/status
+// @access  Private/Admin
 const updateOrderStatus = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id);
         const { status } = req.body;
+
         if (order) {
+            const oldStatus = order.status; // Lưu lại trạng thái cũ để so sánh
+
             order.status = status;
             order.statusHistory.push({ status: status, updatedAt: new Date() });
-            if (status === 'delivered') order.deliveredAt = Date.now();
+
+            if (status === 'delivered') {
+                order.deliveredAt = Date.now();
+            }
+
             const updatedOrder = await order.save();
+
+            if (oldStatus === 'pending' && status === 'confirmed' && order.user) {
+                const user = await User.findById(order.user);
+                if (user) {
+                    const pointsEarned = Math.floor(order.totalPrice / 10000);
+                    
+                    user.loyaltyPoints = (user.loyaltyPoints || 0) + pointsEarned;
+                    await user.save();
+                    
+                    console.log(`[Admin Manual] Đã cộng ${pointsEarned} điểm cho user ${user.email}`);
+                }
+            }
+
             res.json(updatedOrder);
         } else {
             res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
