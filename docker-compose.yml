@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+
+  # 1. RabbitMQ (Vẫn cần chạy local trong docker)
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ecom_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - ecom_network
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # 2. Backend API
+  backend:
+    build: .
+    container_name: ecom_backend
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      # QUAN TRỌNG: Lấy URI từ file .env của bạn (Atlas)
+      - MONGODB_URI=${MONGODB_URI} 
+      - RABBITMQ_URI=amqp://rabbitmq:5672
+      - JWT_SECRET=${JWT_SECRET}
+      - ELASTICSEARCH_URI=http://elasticsearch:9200
+      - EMAIL_USERNAME=${EMAIL_USERNAME}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - FRONTEND_URL=${FRONTEND_URL}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_started
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - ecom_network
+    command: npm run dev
+
+  # 3. Email Worker
+  worker:
+    build: .
+    container_name: ecom_worker
+    environment:
+      # Worker cũng cần kết nối DB nếu cần
+      - MONGODB_URI=${MONGODB_URI}
+      - RABBITMQ_URI=amqp://rabbitmq:5672
+      - EMAIL_USERNAME=${EMAIL_USERNAME}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - ecom_network
+    command: node src/workers/emailWorker.js
+
+  # 4. Elasticsearch (Vẫn chạy local trong docker)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
+    container_name: ecom_elastic
+    environment:
+      - node.name=ecom_elastic
+      - cluster.name=es-docker-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+    networks:
+      - ecom_network
+
+networks:
+  ecom_network:
+    driver: bridge
