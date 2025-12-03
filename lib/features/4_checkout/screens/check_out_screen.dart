@@ -5,50 +5,38 @@ import 'package:cross_platform_mobile_app_development/features/5_profile/screens
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http; // Nếu cần gọi API /checkout
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:convert'; // Nếu cần gọi API /checkout
-import 'vnpay_payment_screen.dart';
+import 'dart:convert';
 import 'package:cross_platform_mobile_app_development/layout/header.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-// import '../services/api_service.dart'; // Nếu có service cho API /checkout
 
-// Giữ AppColors ở đây hoặc chuyển ra file riêng
-class AppColors {
-  static const Color themePageBackground = Color(0xFFF0F2F5);
-  static const Color primaryRed = Color(0xFF007BFF); // Đã đổi màu
-  static const Color textBlack = Color(0xFF222222);
-  static const Color textGrey = Color(0xFF4A4A4A);
-  static const Color textLightGrey = Color(0xFF757575);
-  static const Color borderGrey = Color(0xFFE0E0E0);
-  static const Color lightGreyBackground = Color(0xFFF8F8F8);
-  static const Color sNullTagBackground = Color(0xFFFFE0E6); // Giữ màu cũ hoặc đổi
-  static const Color sNullTagText = Color(0xFFD32F2F); // Giữ màu cũ hoặc đổi
-  static const Color linkBlue = Color(0xFF007AFF);
+// --- Local Style Constants ---
+class CheckoutStyle {
+  static const Color bg = Color(0xFFF5F5FA); // Nền xám xanh nhạt hiện đại
+  static const Color white = Colors.white;
+  static const Color primary = Color(0xFFD70018); // Đỏ CellphoneS
+  static const Color textMain = Color(0xFF222222);
+  static const Color textGrey = Color(0xFF666666);
+  static const Color border = Color(0xFFEBEBEB);
+  
+  static TextStyle header = GoogleFonts.roboto(fontSize: 18, fontWeight: FontWeight.w700, color: textMain);
+  static TextStyle title = GoogleFonts.roboto(fontSize: 15, fontWeight: FontWeight.w600, color: textMain);
+  static TextStyle body = GoogleFonts.roboto(fontSize: 14, color: textMain);
+  static TextStyle label = GoogleFonts.roboto(fontSize: 13, color: textGrey);
 }
 
 class CheckoutPaymentScreen extends StatefulWidget {
-  final Map<String, dynamic> previewOrderData; // Nhận response từ /preview
-  final String? guestEmail; // Nhận từ CheckoutInfoScreen
+  final Map<String, dynamic> previewOrderData;
+  final String? guestEmail;
   final String userId;
-  // Nhận từ CheckoutInfoScreen
-
-  // final String paymentMethodForCheckout; // Nếu cần truyền riêng
-  // final String notesForCheckout; // Nếu cần
-  // final String couponCodeForCheckout; // Nếu cần
-  // final int loyaltyPointsUsedForCheckout; // Nếu cần
-
 
   const CheckoutPaymentScreen({
     super.key,
     required this.previewOrderData,
     this.guestEmail,
     required this.userId,
-    // required this.paymentMethodForCheckout,
-    // required this.notesForCheckout,
-    // required this.couponCodeForCheckout,
-    // required this.loyaltyPointsUsedForCheckout,
   });
 
   @override
@@ -56,26 +44,21 @@ class CheckoutPaymentScreen extends StatefulWidget {
 }
 
 class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
+  // Mock Data cho Header
   final List<Map<String, dynamic>> _categories = [
     {'category_id': 1, 'name': 'Điện thoại'},
     {'category_id': 2, 'name': 'Laptop'},
   ];
-  Map<String, dynamic>? _currentUserData; // Sẽ lấy một phần từ previewOrderData
-  
-  // Các thông tin đơn hàng sẽ lấy từ widget.previewOrderData
-  // late Map<String, dynamic> _orderSummary;
-  // late Map<String, dynamic> _shippingInfo;
+  Map<String, dynamic>? _currentUserData;
 
+  // Data Getters
   List<dynamic> get _orderItems => widget.previewOrderData['items'] as List? ?? [];
-  List<Map<String, dynamic>> _detailedOrderItems = []; // Sẽ chứa product_name
-  bool _isLoadingProductNames = true; // Trạng thái loading cho tên sản phẩm
-  int get _cartItemCount => _detailedOrderItems.length; // Dùng _detailedOrderItems
+  int get _cartItemCount => _orderItems.length;
 
-  // String _discountCode = ""; // Sẽ lấy từ previewOrderData nếu có
+  // State Variables
   bool _agreeToTerms = false;
-  bool _isLoadingCheckout = false; // State cho việc gọi API /checkout
+  bool _isLoadingCheckout = false;
   String? _checkoutErrorMessage;
-
 
   @override
   void initState() {
@@ -85,77 +68,9 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       'phone': widget.previewOrderData['recipient_phone'] ?? '',
       'email': widget.guestEmail ?? '',
     };
-    // KHÔNG gọi API load tên sản phẩm nữa vì dữ liệu đã có đủ
   }
 
-  Future<void> _initializeOrderItemsWithProductNames() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoadingProductNames = true;
-    });
-
-    final rawOrderItems = widget.previewOrderData['items'] as List<dynamic>? ?? [];
-    List<Map<String, dynamic>> tempDetailedItems = [];
-
-    for (var rawItem in rawOrderItems) {
-      if (rawItem is Map<String, dynamic>) {
-        final variantId = rawItem['variant_id'] as int?;
-        String? productName;
-        String variantName = (rawItem['variant'] as Map<String, dynamic>?)?['variant_name'] ?? 'N/A';
-
-        if (variantId != null) {
-          try {
-            // Gọi API lấy chi tiết variant (bao gồm product_name)
-            final response = await http.get(
-              Uri.parse('${AppConstants.baseUrl}/variants/$variantId/price'),
-              headers: {'accept': 'application/json'},
-            ).timeout(const Duration(seconds: 10));
-
-            if (response.statusCode == 200) {
-              final data = jsonDecode(response.body) as Map<String, dynamic>;
-              productName = data['product_name'] as String?;
-              // Cập nhật variant_name nếu API trả về (để đảm bảo đồng nhất)
-              // variantName = data['variant_name'] as String? ?? variantName;
-            } else {
-              print('Failed to fetch product name for variant $variantId: ${response.statusCode}');
-            }
-          } catch (e) {
-            print('Error fetching product name for variant $variantId: $e');
-          }
-        }
-        // Tạo item mới với product_name
-        tempDetailedItems.add({
-          ...rawItem, // Giữ lại các trường cũ từ previewOrderData
-          'product_name': productName ?? 'Sản phẩm không có tên', // Thêm product_name
-          // 'display_name': productName != null ? '$productName - $variantName' : variantName, // Tên để hiển thị
-        });
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        _detailedOrderItems = tempDetailedItems;
-        _isLoadingProductNames = false;
-      });
-    }
-  }
-
-  void _navigateToCatalog(int categoryId, String categoryName) {
-    print('Payment: Navigating to category: $categoryName (ID: $categoryId)');
-  }
-
-  void _onCartPressed() {
-    // Có thể quay lại màn hình Cart nếu cần, hoặc không làm gì
-    int count = 0;
-    Navigator.of(context).popUntil((_) => count++ >= 2); // Quay lại 2 màn hình
-  }
-
-  void _onAccountPressed() {
-    print('Payment: Account pressed');
-  }
-
-  // Bỏ _applyDiscountCode vì mã giảm giá đã được áp dụng ở API /preview
-  // void _applyDiscountCode() { ... }  
+  // --- LOGIC FUNCTIONS (GIỮ NGUYÊN) ---
 
   Future<void> _finalizeOrder() async {
     if (!_agreeToTerms) {
@@ -172,27 +87,21 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
 
     try {
       final ApiService apiService = ApiService();
-
       final String checkoutApiUrl = '${AppConstants.baseUrl}/orders';
       final String guestCheckoutUrl = '${AppConstants.baseUrl}/orders/guest';
 
       http.Response response;
 
-      // -----------------------------
-      // 1. Lấy dữ liệu giảm giá & điểm
-      // -----------------------------
+      // 1. Dữ liệu giảm giá & điểm
       String couponCode = "";
       if (widget.previewOrderData['applied_coupon'] != null) {
         couponCode = widget.previewOrderData['applied_coupon']['code'];
       }
-
       int pointsUsed = widget.previewOrderData['loyalty_points_used'] ?? 0;
 
-      // -----------------------------
-      // 2. Gửi request tạo đơn hàng
-      // -----------------------------
+      // 2. Gửi request tạo đơn
       if (widget.userId.isNotEmpty) {
-        // ---------- USER CHECKOUT ----------
+        // User Checkout
         final prefs = await SharedPreferences.getInstance();
         final token = prefs.getString(AppConstants.tokenKey);
 
@@ -212,13 +121,11 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
             },
             'paymentMethod': widget.previewOrderData['payment_method'],
             'discountCode': couponCode,
-
-            // Sửa theo yêu cầu backend
             'pointsToUse': pointsUsed,
           }),
         );
       } else {
-        // ---------- GUEST CHECKOUT ----------
+        // Guest Checkout
         List<dynamic> rawItems = widget.previewOrderData['items'];
         List<Map<String, dynamic>> guestItems = rawItems.map((item) => {
               "product": item['product_id'],
@@ -246,16 +153,12 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
             },
             'paymentMethod': widget.previewOrderData['payment_method'],
             'cartItems': guestItems,
-
-            // Bổ sung discount cho guest
             'discountCode': couponCode,
           }),
         );
       }
 
-      // -----------------------------
-      // 3. Kiểm tra kết quả tạo đơn
-      // -----------------------------
+      // 3. Kiểm tra kết quả
       if (!(response.statusCode == 200 || response.statusCode == 201)) {
         final errorData = jsonDecode(response.body);
         setState(() {
@@ -265,10 +168,6 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       }
 
       final responseData = jsonDecode(response.body);
-
-      // -----------------------------
-      // 4. Lấy orderId + tổng tiền
-      // -----------------------------
       String orderId = "";
       int totalAmount = 0;
 
@@ -280,72 +179,49 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
         totalAmount = responseData['totalPrice'];
       }
 
-      final paymentMethod =
-          widget.previewOrderData['payment_method'].toString().toUpperCase();
+      final paymentMethod = widget.previewOrderData['payment_method'].toString().toUpperCase();
 
-      // -----------------------------
-      // 5. Nếu chọn VNPAY → Điều hướng thanh toán
-      // -----------------------------
-      if (paymentMethod.contains('VNPAY') || paymentMethod.contains('(VNPAY)') || paymentMethod.contains('Online')) {
+      // 4. Xử lý VNPAY
+      if (paymentMethod.contains('VNPAY') || paymentMethod.contains('ONLINE')) {
         final paymentUrl = await apiService.createPaymentUrl(
           orderId: orderId,
           amount: totalAmount,
         );
 
         if (paymentUrl == null) {
-          setState(() {
-            _checkoutErrorMessage = "Không thể tạo liên kết thanh toán.";
-          });
+          setState(() => _checkoutErrorMessage = "Không thể tạo liên kết thanh toán.");
           return;
         }
 
         if (!mounted) return;
-        
-        // Xóa giỏ hàng local nếu là guest
         if (widget.userId.isEmpty) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove('LOCAL_CART_DATA');
         }
 
-        // --- SỬA ĐỔI CHO WEB ---
         final Uri uri = Uri.parse(paymentUrl);
         if (await canLaunchUrl(uri)) {
-          // Mở link ngay tại tab hiện tại. 
-          // Sau khi thanh toán xong, VNPAY sẽ redirect về localhost:3000/order-success
-          await launchUrl(uri, webOnlyWindowName: '_self'); 
+          await launchUrl(uri, webOnlyWindowName: '_self');
         } else {
-          setState(() {
-            _checkoutErrorMessage = "Không thể mở trang thanh toán.";
-          });
+          setState(() => _checkoutErrorMessage = "Không thể mở trang thanh toán.");
         }
-        // Kết thúc hàm ở đây, vì app sẽ reload lại trang khi VNPAY redirect về
         return;
       }
 
-      // -----------------------------
-      // 6. Nếu COD hoặc không phải VNPAY → Thành công luôn
-      // -----------------------------
+      // 5. COD Thành công
       if (widget.userId.isEmpty) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('LOCAL_CART_DATA');
       }
-
       _showSuccessDialog(responseData);
+
     } catch (e) {
-      setState(() {
-        _checkoutErrorMessage = 'Lỗi kết nối: $e';
-      });
+      setState(() => _checkoutErrorMessage = 'Lỗi kết nối: $e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingCheckout = false;
-        });
-      }
+      if (mounted) setState(() => _isLoadingCheckout = false);
     }
   }
 
-
-  // Hiển thị dialog thành công và thông tin đơn hàng
   void _showSuccessDialog(dynamic responseData) {
     String orderId = "Unknown";
     if (responseData is Map) {
@@ -357,44 +233,45 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Column(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Column(
           children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 60),
-            SizedBox(height: 10),
-            Text("Đặt hàng thành công!", style: TextStyle(color: Colors.green)),
+            const Icon(Icons.check_circle_rounded, color: Colors.green, size: 64),
+            const SizedBox(height: 12),
+            Text("Thành công!", style: CheckoutStyle.header.copyWith(color: Colors.green)),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text("Mã đơn hàng: #${orderId.substring(0, 8).toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold)), // Rút gọn mã cho đẹp
-            const SizedBox(height: 10),
-            const Text("Cảm ơn bạn đã mua sắm.", textAlign: TextAlign.center),
+            const Text("Đơn hàng của bạn đã được khởi tạo.", textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8)),
+              child: Text("Mã đơn: #${orderId.substring(0, 8).toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
           ],
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () {
               Navigator.of(ctx).pop();
-              Navigator.of(context).popUntil((route) => route.isFirst); // Về trang chủ
+              Navigator.of(context).popUntil((route) => route.isFirst);
             },
             child: const Text("Về trang chủ"),
           ),
           ElevatedButton(
             onPressed: () {
-               Navigator.of(ctx).pop(); // Đóng dialog
-               
-               // Reset stack về Home rồi đẩy History lên (để user bấm Back từ History sẽ về Home chứ ko về Checkout)
+               Navigator.of(ctx).pop();
                Navigator.of(context).pushAndRemoveUntil(
                  MaterialPageRoute(builder: (_) => const HomeScreen()),
                  (route) => false,
                );
-               
-               // Chuyển tới lịch sử đơn hàng
-               Navigator.of(context).push(
-                 MaterialPageRoute(builder: (_) => const OrderHistoryScreen())
-               );
+               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OrderHistoryScreen()));
             },
+            style: ElevatedButton.styleFrom(backgroundColor: CheckoutStyle.primary, foregroundColor: Colors.white),
             child: const Text("Xem đơn hàng"),
           )
         ],
@@ -402,570 +279,389 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
     );
   }
 
+  // --- UI WIDGETS ---
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final bool isDesktop = screenWidth > 800;
+    
+    // Parse Total Amount an toàn
+    double totalAmount = 0.0;
+    try {
+      totalAmount = double.parse(widget.previewOrderData['total_amount'].toString());
+    } catch (_) {}
 
     return Scaffold(
-      backgroundColor: AppColors.themePageBackground,
+      backgroundColor: CheckoutStyle.bg,
       appBar: PreferredSize(
-        preferredSize: Size.fromHeight(
-          kIsWeb ? (screenWidth > 900 ? 60 : 50) : 45 + MediaQuery.of(context).padding.top,
-        ),
+        preferredSize: Size.fromHeight(kIsWeb ? (screenWidth > 900 ? 60 : 50) : 45 + MediaQuery.of(context).padding.top),
         child: CustomHeader(
           categories: _categories,
-          currentUserData: _currentUserData, // Dùng _currentUserData đã khởi tạo
+          currentUserData: _currentUserData,
           cartItemCount: _cartItemCount,
-          onCartPressed: _onCartPressed,
-          onAccountPressed: _onAccountPressed,
-          onCategorySelected: (Map<String, dynamic> selectedCategory) {
-            final categoryId = selectedCategory['category_id'] as int?;
-            final categoryName = selectedCategory['name'] as String?;
-            if (categoryId != null && categoryName != null) {
-              _navigateToCatalog(categoryId, categoryName);
-            }
-          },
-          onLogoTap: () {
-            Navigator.of(context).popUntil((route) => route.isFirst);
-          },
-          onSearchSubmitted: (value) {
-            print('Payment: Search submitted: $value');
-          },
+          onCartPressed: () => Navigator.of(context).popUntil((route) => route.isFirst), // Example logic
+          onAccountPressed: () {},
+          onLogoTap: () => Navigator.of(context).popUntil((route) => route.isFirst),
         ),
       ),
-      body: SingleChildScrollView(
-        child: Center(
-          child: Container(
-            width: isDesktop ? 800 : double.infinity,
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop ? 0 : 16.0,
-              vertical: 24.0,
+      body: Stack(
+        children: [
+          // Main Content
+          SingleChildScrollView(
+            padding: EdgeInsets.only(
+              left: isDesktop ? (screenWidth - 800) / 2 : 16,
+              right: isDesktop ? (screenWidth - 800) / 2 : 16,
+              top: 20,
+              bottom: 120, // Space for BottomBar
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row( // Nút Back và Tiêu đề
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: AppColors.textBlack),
-                      onPressed: () => Navigator.of(context).pop(), // Quay lại CheckoutInfoScreen
-                    ),
-                    Expanded(
-                      child: Text(
-                        "Xác nhận thanh toán", // Hoặc "Xác nhận đơn hàng"
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.montserrat(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textBlack,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 48), // Để cân bằng IconButton
-                  ],
-                ),
-                const SizedBox(height: 16),
+                // Breadcrumb / Step Indicator
                 _buildStepIndicator(),
                 const SizedBox(height: 24),
-                _buildSectionTitle("DANH SÁCH SẢN PHẨM"),
-                _buildOrderItemsList(),
-                const SizedBox(height: 24),
-                _buildSectionTitle("TÓM TẮT ĐƠN HÀNG"),
-                _buildOrderSummaryCard(),
-                const SizedBox(height: 24),
-                _buildSectionTitle("THÔNG TIN THANH TOÁN"),
-                _buildPaymentMethodDisplayCard(),
-                const SizedBox(height: 24),
-                _buildSectionTitle("THÔNG TIN NHẬN HÀNG"),
-                _buildShippingInfoCard(),
-                const SizedBox(height: 24),
-                _buildTermsAndConditionsCheckbox(),
-                const SizedBox(height: 32),
-                _buildFinalizeOrderSection(), // Nút "Thanh toán" / "Đặt hàng"
+
+                // Title
+                Row(
+                  children: [
+                    InkWell(
+                      onTap: () => Navigator.pop(context),
+                      child: const Icon(Icons.arrow_back_ios_new, size: 20),
+                    ),
+                    const SizedBox(width: 8),
+                    Text("Xác nhận thanh toán", style: CheckoutStyle.header.copyWith(fontSize: 20)),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // Layout chính: Thông tin bên trái, Tóm tắt bên phải (nếu Desktop)
+                // Ở đây để đơn giản ta dùng Column, Card xếp dọc
+                
+                // 1. Thông tin giao hàng & Thanh toán
+                _buildSectionCard(
+                  title: "THÔNG TIN GIAO HÀNG",
+                  icon: Icons.local_shipping_outlined,
+                  child: _buildShippingInfo(),
+                ),
+                const SizedBox(height: 16),
+
+                _buildSectionCard(
+                  title: "PHƯƠNG THỨC THANH TOÁN",
+                  icon: Icons.payment,
+                  child: _buildPaymentMethod(),
+                ),
+                const SizedBox(height: 16),
+
+                // 2. Danh sách sản phẩm
+                _buildSectionCard(
+                  title: "DANH SÁCH SẢN PHẨM",
+                  icon: Icons.shopping_bag_outlined,
+                  child: _buildProductList(),
+                ),
+                const SizedBox(height: 16),
+
+                // 3. Chi tiết giá (Summary)
+                _buildSectionCard(
+                  title: "CHI TIẾT THANH TOÁN",
+                  icon: Icons.receipt_long,
+                  child: _buildOrderSummary(),
+                ),
+                const SizedBox(height: 16),
+
+                // 4. Điều khoản
+                _buildTermsCheckbox(),
+                
+                // Hiển thị lỗi nếu có
                 if (_checkoutErrorMessage != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16.0),
-                    child: Text(
-                      _checkoutErrorMessage!,
-                      style: GoogleFonts.montserrat(color: Colors.red, fontSize: 14),
-                      textAlign: TextAlign.center,
+                  Container(
+                    margin: const EdgeInsets.only(top: 20),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(8)),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error, color: Colors.red),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(_checkoutErrorMessage!, style: const TextStyle(color: Colors.red))),
+                      ],
                     ),
                   ),
               ],
             ),
           ),
-        ),
-      ),
-      floatingActionButton: _buildScrollToTopButton(),
-    );
-  }
 
-  Widget _buildStepIndicator() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _buildStepItem("1. THÔNG TIN", isActive: false),
-          Container(
-            width: 60,
-            height: 1,
-            color: AppColors.primaryRed, // Line active
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-          ),
-          _buildStepItem("2. THANH TOÁN", isActive: true),
+          // Fixed Bottom Bar
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              padding: EdgeInsets.only(
+                left: 20, right: 20, top: 16, 
+                bottom: MediaQuery.of(context).padding.bottom + 16
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -4))],
+              ),
+              child: SafeArea(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("Tổng thanh toán", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          Text(
+                            NumberFormat("#,##0₫", "vi_VN").format(totalAmount),
+                            style: GoogleFonts.roboto(fontSize: 20, fontWeight: FontWeight.bold, color: CheckoutStyle.primary),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: (_agreeToTerms && !_isLoadingCheckout) ? _finalizeOrder : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: CheckoutStyle.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                        ),
+                        child: _isLoadingCheckout
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text("ĐẶT HÀNG", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
+                    )
+                  ],
+                ),
+              ),
+            ),
+          )
         ],
       ),
     );
   }
 
-  Widget _buildStepItem(String title, {required bool isActive}) {
+  // --- Helper Widgets ---
+
+  Widget _buildStepIndicator() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildStepIcon("1", "Thông tin", false),
+        Container(width: 40, height: 2, color: CheckoutStyle.primary),
+        _buildStepIcon("2", "Thanh toán", true),
+        Container(width: 40, height: 2, color: Colors.grey[300]),
+        _buildStepIcon("3", "Hoàn tất", false),
+      ],
+    );
+  }
+
+  Widget _buildStepIcon(String step, String label, bool isActive) {
     return Column(
       children: [
-        Text(
-          title,
-          style: GoogleFonts.montserrat(
-            fontSize: 14,
-            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-            color: isActive ? AppColors.primaryRed : AppColors.textGrey,
+        Container(
+          width: 28, height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? CheckoutStyle.primary : (step == "1" ? CheckoutStyle.primary : Colors.grey[200]),
+            shape: BoxShape.circle,
           ),
+          child: step == "1" 
+            ? const Icon(Icons.check, color: Colors.white, size: 16)
+            : Text(step, style: TextStyle(color: isActive ? Colors.white : Colors.grey, fontWeight: FontWeight.bold)),
         ),
-        if (isActive) ...[
-          const SizedBox(height: 4),
-          Container(width: 80, height: 2, color: AppColors.primaryRed),
+        const SizedBox(height: 4),
+        Text(label, style: TextStyle(fontSize: 11, fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+      ],
+    );
+  }
+
+  Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: Colors.blue[700]),
+              const SizedBox(width: 10),
+              Text(title, style: CheckoutStyle.title),
+            ],
+          ),
+          const Divider(height: 24),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShippingInfo() {
+    final name = widget.previewOrderData['recipient_name'] ?? '';
+    final phone = widget.previewOrderData['recipient_phone'] ?? '';
+    final address = widget.previewOrderData['shipping_address'] ?? '';
+    final notes = widget.previewOrderData['notes'] as String?;
+
+    return Column(
+      children: [
+        _buildInfoRow(Icons.person, "$name ($phone)"),
+        const SizedBox(height: 12),
+        _buildInfoRow(Icons.location_on, address),
+        if (notes != null && notes.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(8)),
+            child: Row(
+              children: [
+                const Icon(Icons.note_alt, size: 16, color: Colors.orange),
+                const SizedBox(width: 8),
+                Expanded(child: Text("Ghi chú: $notes", style: const TextStyle(fontSize: 13, color: Colors.orange))),
+              ],
+            ),
+          )
         ]
       ],
     );
   }
 
-  Widget _buildOrderItemsList() {
-    if (_orderItems.isEmpty) {
-      return const Card(child: Padding(padding: EdgeInsets.all(16), child: Text("Không có sản phẩm.")));
-    }
-
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      color: AppColors.lightGreyBackground,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _orderItems.length,
-          itemBuilder: (context, index) {
-            final item = _orderItems[index];
-            // Dữ liệu 'variant' được tạo bên CheckoutInfoScreen: {'name': ..., 'image_url': ...}
-            final variantInfo = item['variant'] as Map<String, dynamic>?;
-            final itemName = variantInfo?['name'] ?? "Sản phẩm";
-            final imageUrl = variantInfo?['image_url'] ?? "";
-            final price = double.tryParse(item['price_at_purchase']?.toString() ?? '0') ?? 0.0;
-
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Row(
-                children: [
-                  Image.asset(
-                    imageUrl,
-                    width: 60, height: 60, fit: BoxFit.cover,
-                    errorBuilder: (c,e,s) => const Icon(Icons.image, size: 60),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          itemName,
-                          style: GoogleFonts.montserrat(fontSize: 14, fontWeight: FontWeight.w600),
-                          maxLines: 2, overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          NumberFormat("#,##0₫", "vi_VN").format(price),
-                          style: GoogleFonts.montserrat(fontSize: 13, color: AppColors.primaryRed, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text("x${item['quantity']}", style: GoogleFonts.montserrat(fontSize: 13)),
-                ],
-              ),
-            );
-          },
-          separatorBuilder: (context, index) => const Divider(),
-        ),
-      ),
+  Widget _buildInfoRow(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: CheckoutStyle.textGrey),
+        const SizedBox(width: 12),
+        Expanded(child: Text(text, style: CheckoutStyle.body.copyWith(height: 1.4))),
+      ],
     );
   }
 
-
-  Widget _buildOrderSummaryCard() {
-    String formatCurrency(double amount, {bool showSign = false}) {
-      String sign = "";
-      if (showSign && amount > 0) {
-        sign = "-"; // Chỉ thêm dấu trừ nếu có giảm giá
-      }
-      String value = amount.abs().toStringAsFixed(0).replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.');
-      return "$sign${value}đ";
+  Widget _buildPaymentMethod() {
+    final method = widget.previewOrderData['payment_method'] ?? 'Tiền mặt';
+    IconData icon = Icons.money;
+    if (method.toString().contains("Online") || method.toString().contains("VNPAY")) {
+      icon = Icons.credit_card;
     }
 
-    final subtotal = double.tryParse(widget.previewOrderData['subtotal']?.toString() ?? '0') ?? 0.0;
-    final shippingFee = double.tryParse(widget.previewOrderData['shipping_fee']?.toString() ?? '0') ?? 0.0;
-    
-    // <--- MỚI: Lấy thông tin giảm giá chi tiết
-    final couponDiscount = double.tryParse(widget.previewOrderData['coupon_discount_amount']?.toString() ?? '0') ?? 0.0;
-    final loyaltyDiscount = double.tryParse(widget.previewOrderData['loyalty_discount_amount']?.toString() ?? '0') ?? 0.0;
-    
-    final totalAmount = double.tryParse(widget.previewOrderData['total_amount']?.toString() ?? '0') ?? 0.0;
-    final String? appliedCouponCode = (widget.previewOrderData['applied_coupon'] as Map<String, dynamic>?)?['code'] as String?;
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, color: Colors.blue[700]),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Text(method, style: CheckoutStyle.title)),
+        const Icon(Icons.check_circle, color: Colors.green),
+      ],
+    );
+  }
 
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      color: AppColors.lightGreyBackground,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
+  Widget _buildProductList() {
+    final items = widget.previewOrderData['items'] as List? ?? [];
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const Divider(height: 24),
+      itemBuilder: (ctx, i) {
+        final item = items[i];
+        final variant = item['variant'] ?? {};
+        final price = double.tryParse(item['price_at_purchase'].toString()) ?? 0;
+        final qty = item['quantity'] ?? 1;
+
+        return Row(
           children: [
-            _buildSummaryRow("Số lượng sản phẩm", _cartItemCount.toString()),
-            _buildSummaryRow("Tiền hàng (tạm tính)", formatCurrency(subtotal)),
-            _buildSummaryRow(
-                "Phí vận chuyển",
-                shippingFee == 0.0 ? "Miễn phí" : formatCurrency(shippingFee)),
-
-            // <--- MỚI: Hiển thị dòng giảm giá Coupon
-            if (couponDiscount > 0.0)
-              _buildSummaryRow(
-                "Mã giảm giá ${appliedCouponCode != null ? '($appliedCouponCode)' : ''}",
-                formatCurrency(couponDiscount, showSign: true),
-                valueColor: Colors.green, // Màu xanh cho giảm giá
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                variant['image_url'] ?? '',
+                width: 60, height: 60, fit: BoxFit.cover,
+                errorBuilder: (_,__,___) => Container(width: 60, height: 60, color: Colors.grey[200], child: const Icon(Icons.image)),
               ),
-              
-            // <--- MỚI: Hiển thị dòng giảm giá Điểm
-            if (loyaltyDiscount > 0.0)
-              _buildSummaryRow(
-                "Tiêu điểm tích lũy",
-                formatCurrency(loyaltyDiscount, showSign: true),
-                valueColor: Colors.green, // Màu xanh cho giảm giá
-              ),
-              
-            const Divider(height: 20),
-            _buildSummaryRow(
-              "Tổng tiền",
-              formatCurrency(totalAmount),
-              isTotal: true,
-              subtitle: "(đã gồm VAT)",
-            ),
-            
-            // Hiển thị điểm nhận được
-            if (widget.previewOrderData['items'] != null) ...[
-               const SizedBox(height: 8),
-               // Tính tạm điểm nhận được (Backend tính: itemsPrice / 10000)
-               // Ở đây ta hiển thị ước tính
-                _buildSummaryRow(
-                "Điểm tích lũy nhận được",
-                "+${(subtotal / 10000).floor()} điểm",
-                valueColor: Colors.orange[700],
-              ),
-            ]
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSummaryRow(String label, String value,
-      {Color? valueColor, bool isTotal = false, String? subtitle}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: subtitle != null ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: GoogleFonts.montserrat(
-                  fontSize: isTotal ? 14 : 13,
-                  fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
-                  color: AppColors.textGrey,
-                ),
-              ),
-              if (subtitle != null)
-                Text(
-                  subtitle,
-                  style: GoogleFonts.montserrat(
-                    fontSize: 11,
-                    color: AppColors.textLightGrey,
-                  ),
-                ),
-            ],
-          ),
-          Text(
-            value,
-            style: GoogleFonts.montserrat(
-              fontSize: isTotal ? 16 : 14,
-              fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
-              color: valueColor ?? (isTotal ? AppColors.primaryRed : AppColors.textBlack),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 16.0, bottom: 12.0),
-      child: Text(
-        title.toUpperCase(),
-        style: GoogleFonts.montserrat(
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
-          color: AppColors.textBlack,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPaymentMethodDisplayCard() {
-    final paymentMethod = widget.previewOrderData['payment_method'] as String? ?? "Chưa chọn";
-    // Icon có thể dựa trên paymentMethod
-    String paymentIconAsset = 'assets/images/payment_icon.png'; // default
-    if (paymentMethod.toLowerCase().contains('tiền mặt')) {
-      paymentIconAsset = 'assets/images/cash_icon.png'; // Cần có icon này
-    } else if (paymentMethod.toLowerCase().contains('chuyển khoản')) {
-      paymentIconAsset = 'assets/images/bank_transfer_icon.png'; // Cần có icon này
-    } else if (paymentMethod.toLowerCase().contains('thẻ')) {
-      paymentIconAsset = 'assets/images/card_icon.png'; // Cần có icon này
-    }
-
-
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      color: AppColors.lightGreyBackground,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          children: [
-            Image.asset( // Hoặc Icon
-              paymentIconAsset,
-              width: 32,
-              height: 32,
-              errorBuilder: (c, e, s) => Icon(Icons.payment, size: 32, color: AppColors.primaryRed),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    paymentMethod,
-                    style: GoogleFonts.montserrat(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primaryRed),
-                  ),
-                  // Text( // Thông tin thêm nếu có
-                  //   "Giảm thêm tới 1.000.000đ",
-                  //   style: GoogleFonts.montserrat(fontSize: 12, color: AppColors.textGrey),
-                  // ),
+                  Text(variant['name'] ?? 'Sản phẩm', style: CheckoutStyle.body.copyWith(fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 4),
+                  Text("${NumberFormat("#,##0", "vi_VN").format(price)}đ  x$qty", style: CheckoutStyle.label),
                 ],
               ),
             ),
-            // Không cần Icon chevron_right nếu đây chỉ là hiển thị
-            // const Icon(Icons.chevron_right, color: AppColors.textLightGrey),
+            Text(
+              NumberFormat("#,##0", "vi_VN").format(price * qty) + "đ",
+              style: CheckoutStyle.title.copyWith(fontSize: 14),
+            )
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildShippingInfoCard() {
-    // Lấy thông tin từ widget.previewOrderData
-    final String name = widget.previewOrderData['recipient_name'] ?? 'N/A';
-    final String phone = widget.previewOrderData['recipient_phone'] ?? 'N/A';
-    final String email = widget.guestEmail ?? (widget.previewOrderData['guest_email_from_api_if_any'] ?? 'N/A'); // Sử dụng guestEmail
-    final String address = widget.previewOrderData['shipping_address'] ?? 'N/A';
-    // Xác định deliveryType dựa trên shipping_address
-    // Đây là ví dụ, bạn cần logic cụ thể hơn nếu địa chỉ cửa hàng có format đặc biệt
-    final bool isStorePickup = address.toLowerCase().contains("cửa hàng") || address.toLowerCase().contains("store");
-    final String deliveryTypeLabel = isStorePickup ? 'Nhận hàng tại' : 'Giao hàng đến';
+  Widget _buildOrderSummary() {
+    final subtotal = double.tryParse(widget.previewOrderData['subtotal'].toString()) ?? 0;
+    final shipping = double.tryParse(widget.previewOrderData['shipping_fee'].toString()) ?? 0;
+    final couponDisc = double.tryParse(widget.previewOrderData['coupon_discount_amount'].toString()) ?? 0;
+    final loyaltyDisc = double.tryParse(widget.previewOrderData['loyalty_discount_amount'].toString()) ?? 0;
+    final total = double.tryParse(widget.previewOrderData['total_amount'].toString()) ?? 0;
 
-
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      color: AppColors.lightGreyBackground,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildShippingInfoRow("Khách hàng", name, isName: true,/* widget.previewOrderData['s_member_rank'] ?? '' */),
-            _buildShippingInfoRow("Số điện thoại", phone),
-            _buildShippingInfoRow("Email", email),
-            _buildShippingInfoRow(deliveryTypeLabel, address),
-            if (widget.previewOrderData['notes'] != null && (widget.previewOrderData['notes'] as String).isNotEmpty)
-              _buildShippingInfoRow("Ghi chú", widget.previewOrderData['notes'] ?? ''),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildShippingInfoRow(String label, String value,
-      {bool isName = false, String? sMemberRank}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100, // Điều chỉnh nếu cần
-            child: Text(
-              label,
-              style: GoogleFonts.montserrat(fontSize: 13, color: AppColors.textLightGrey),
-            ),
-          ),
-          Expanded(
-            child: Row( // Sử dụng Row để sMemberRank nằm cùng dòng
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded( // Text value có thể dài
-                  child: Text(
-                    value,
-                    style: GoogleFonts.montserrat(
-                        fontSize: 13,
-                        color: AppColors.textBlack,
-                        fontWeight: isName ? FontWeight.w600 : FontWeight.normal),
-                  ),
-                ),
-                if (isName && sMemberRank != null && sMemberRank.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.sNullTagBackground, // Cần định nghĩa
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      sMemberRank,
-                      style: GoogleFonts.montserrat(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.sNullTagText), // Cần định nghĩa
-                    ),
-                  ),
-                ]
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTermsAndConditionsCheckbox() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
       children: [
-        SizedBox(
-          width: 24,
-          height: 24,
-          child: Checkbox(
-            value: _agreeToTerms,
-            onChanged: (bool? value) {
-              setState(() {
-                _agreeToTerms = value ?? false;
-              });
-            },
-            activeColor: AppColors.primaryRed,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: RichText(
-            text: TextSpan(
-              style: GoogleFonts.montserrat(fontSize: 12, color: AppColors.textGrey, height: 1.4),
-              children: [
-                const TextSpan(text: "Hoàn thành kiểm tra thông tin?"),
-                // const TextSpan(text: " của CellphoneS.\nVới các giao dịch trên 10 triệu..."), // Phần này có thể không cần ở đây nữa
-              ],
-            ),
-          ),
-        ),
+        _buildSummaryRow("Tạm tính", subtotal),
+        _buildSummaryRow("Phí vận chuyển", shipping),
+        if (couponDisc > 0) _buildSummaryRow("Giảm giá Voucher", couponDisc, isMinus: true),
+        if (loyaltyDisc > 0) _buildSummaryRow("Giảm giá điểm", loyaltyDisc, isMinus: true),
+        const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("Tổng cộng", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Text(NumberFormat("#,##0₫", "vi_VN").format(total), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: CheckoutStyle.primary)),
+          ],
+        )
       ],
     );
   }
 
-  Widget _buildFinalizeOrderSection() {
-    final totalAmount = double.tryParse(widget.previewOrderData['total_amount']?.toString() ?? '0') ?? 0.0;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)]),
-      child: Column(
+  Widget _buildSummaryRow(String label, double value, {bool isMinus = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text("Tổng thanh toán:", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-              Text(NumberFormat("#,##0₫", "vi_VN").format(totalAmount), style: const TextStyle(fontSize: 18, color: Colors.red, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: (_agreeToTerms && !_isLoadingCheckout) ? _finalizeOrder : null,
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryRed, padding: const EdgeInsets.symmetric(vertical: 12)),
-              child: _isLoadingCheckout 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white))
-                : const Text("XÁC NHẬN ĐẶT HÀNG", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
+          Text(label, style: CheckoutStyle.label),
+          Text(
+            "${isMinus ? '-' : ''}${NumberFormat("#,##0", "vi_VN").format(value)}đ",
+            style: CheckoutStyle.body.copyWith(fontWeight: FontWeight.w500, color: isMinus ? Colors.green : CheckoutStyle.textMain),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildScrollToTopButton() {
-    return FloatingActionButton(
-      onPressed: () { /* Cần ScrollController */ },
-      mini: true,
-      backgroundColor: AppColors.primaryRed.withOpacity(0.9),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.keyboard_arrow_up, color: Colors.white, size: 18),
-          Text("Lên đầu", style: GoogleFonts.montserrat(color: Colors.white, fontSize: 7)),
-        ],
-      ),
-      elevation: 4,
+  Widget _buildTermsCheckbox() {
+    return Row(
+      children: [
+        Checkbox(
+          value: _agreeToTerms,
+          activeColor: CheckoutStyle.primary,
+          onChanged: (val) => setState(() => _agreeToTerms = val ?? false),
+        ),
+        const Expanded(
+          child: Text("Tôi đồng ý với các điều khoản mua hàng và chính sách bảo mật.", style: TextStyle(fontSize: 13)),
+        ),
+      ],
     );
   }
-
-  String _formatCurrency(double? amount) {
-    if (amount == null) return "0đ";
-    final formatter = NumberFormat.currency(
-      locale: 'vi_VN',
-      symbol: 'đ',
-      decimalDigits: 0,
-    );
-    return formatter.format(amount);
-  }
-}
-
-// Helper để format tiền tệ, bạn có thể đã có trong intl
-// Hoặc dùng NumberFormat như trong CartScreen cũ
-NumberFormat get _currencyFormatter {
-  return NumberFormat.currency(locale: 'vi_VN', symbol: 'đ', decimalDigits: 0);
 }

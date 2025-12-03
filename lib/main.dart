@@ -1,3 +1,4 @@
+import 'package:cross_platform_mobile_app_development/data/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:url_strategy/url_strategy.dart'; // Import thư viện này
 import 'features/1_home/screens/home_screen.dart'; // Import Home
@@ -37,9 +38,11 @@ class MyApp extends StatelessWidget {
         // Backend trả về: http://domain/login?token=TOKEN_JWT
         if (uri.path == '/login' && uri.queryParameters.containsKey('token')) {
           final token = uri.queryParameters['token'];
-          // Lưu token và chuyển vào Home
-          _saveTokenAndNavigate(token!);
-          return MaterialPageRoute(builder: (_) => const HomeScreen());
+          
+          // Thay vì về Home ngay, ta về màn hình xử lý
+          return MaterialPageRoute(
+            builder: (_) => AuthProcessingScreen(token: token!),
+          );
         }
 
         // --- LOGIC 2: XỬ LÝ RESET PASSWORD ---
@@ -79,10 +82,45 @@ class MyApp extends StatelessWidget {
     );
   }
 
-  // Hàm phụ trợ lưu token nhanh
-  Future<void> _saveTokenAndNavigate(String token) async {
+}
+
+// Màn hình trung gian để xử lý lưu token
+class AuthProcessingScreen extends StatefulWidget {
+  final String token;
+  const AuthProcessingScreen({super.key, required this.token});
+
+  @override
+  State<AuthProcessingScreen> createState() => _AuthProcessingScreenState();
+}
+
+class _AuthProcessingScreenState extends State<AuthProcessingScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _saveAndRedirect();
+  }
+
+  Future<void> _saveAndRedirect() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(AppConstants.tokenKey, token);
-    // Có thể cần gọi API getUserProfile ở đây để lấy info user lưu lại
+    await prefs.setString(AppConstants.tokenKey, widget.token);
+    
+    // Gọi API lấy profile ngay tại đây để cache thông tin user
+    final apiService = ApiService();
+    await apiService.getUserProfile(); 
+
+    if (mounted) {
+      // Chuyển hướng về Home và xóa các màn hình trước đó
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
+    );
   }
 }

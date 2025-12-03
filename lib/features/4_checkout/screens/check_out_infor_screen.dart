@@ -1,32 +1,41 @@
-// Trong file: CheckoutInfoScreen.dart
-
-import 'package:cross_platform_mobile_app_development/core/constants/app_constants.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart'; // kIsWeb
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'dart:convert';
-import '../../../data/services/cart_service.dart';
-import '../../../data/models/cart_model.dart';
+
+import '../../../core/constants/app_constants.dart';
 import '../../../data/services/api_service.dart';
+import '../../../data/services/cart_service.dart';
+import '../../../layout/header.dart'; // Import CustomHeader
+import '../../1_home/screens/home_screen.dart';
+import '../../3_cart/screens/cart_screen.dart';
+import '../../5_profile/screens/profile_screen.dart';
+import 'check_out_screen.dart'; // Màn hình Payment kế tiếp
 
-import 'check_out_screen.dart';
-import 'package:cross_platform_mobile_app_development/layout/header.dart';
+// --- Local Style Constants ---
+class CheckoutStyle {
+  static const Color bg = Color(0xFFF5F5FA);
+  static const Color white = Colors.white;
+  static const Color primary = Color(0xFFD70018); // Đỏ CellphoneS
+  static const Color textMain = Color(0xFF222222);
+  static const Color textGrey = Color(0xFF666666);
+  static const Color border = Color(0xFFEBEBEB);
+  
+  static TextStyle header = GoogleFonts.roboto(fontSize: 18, fontWeight: FontWeight.w700, color: textMain);
+  static TextStyle title = GoogleFonts.roboto(fontSize: 15, fontWeight: FontWeight.w600, color: textMain);
+  static TextStyle body = GoogleFonts.roboto(fontSize: 14, color: textMain);
+  static TextStyle label = GoogleFonts.roboto(fontSize: 13, color: textGrey);
+}
 
-// --- Models cho API Địa chỉ (Cấu trúc 2 cấp: Tỉnh -> Xã) ---
-
+// --- Models Địa chỉ ---
 class Province {
-  final String code; // Dữ liệu trả về là "code": "01"
+  final String code;
   final String name;
-
   Province({required this.code, required this.name});
-
-  factory Province.fromJson(Map<String, dynamic> json) {
-    return Province(
-      code: (json['code'] ?? '').toString(),
-      name: (json['name'] ?? '').toString(),
-    );
-  }
+  factory Province.fromJson(Map<String, dynamic> json) => 
+      Province(code: (json['code'] ?? '').toString(), name: (json['name'] ?? '').toString());
   @override
   String toString() => name;
 }
@@ -34,73 +43,61 @@ class Province {
 class Ward {
   final String code;
   final String name;
-  
   Ward({required this.code, required this.name});
-
-  factory Ward.fromJson(Map<String, dynamic> json) {
-    return Ward(
-      code: (json['code'] ?? '').toString(),
-      name: (json['name'] ?? '').toString(),
-    );
-  }
+  factory Ward.fromJson(Map<String, dynamic> json) => 
+      Ward(code: (json['code'] ?? '').toString(), name: (json['name'] ?? '').toString());
   @override
   String toString() => name;
 }
 
-// --- Kết thúc Models ---
-
+// --- Main Screen ---
 class CheckoutInfoScreen extends StatefulWidget {
   final Map<String, dynamic>? currentUserData;
   final String userId;
 
-  const CheckoutInfoScreen({
-    super.key,
-    this.currentUserData,
-    required this.userId,
-  });
+  const CheckoutInfoScreen({super.key, this.currentUserData, required this.userId});
 
   @override
   State<CheckoutInfoScreen> createState() => _CheckoutInfoScreenState();
 }
 
 class _CheckoutInfoScreenState extends State<CheckoutInfoScreen> {
+  // Services
   final ApiService _apiService = ApiService();
+  final CartService _cartService = CartService();
   
-  // Base URL của API mới (Lưu ý: Bạn có thể cần thay đổi ngày trong URL nếu API update version)
-  final String _apiBaseUrl = 'https://production.cas.so/address-kit'; 
+  // Constants Địa chỉ
+  final String _apiBaseUrl = 'https://production.cas.so/address-kit';
+  final String _currentApiDateStr = "2025-07-01";
 
-  final List<Map<String, dynamic>> _categories = [
-    {'category_id': 1, 'name': 'Linh kiện'},
-    {'category_id': 2, 'name': 'Laptop'},
-  ];
+  // Header Data State
+  List<Map<String, dynamic>> _headerCategories = [];
+  int _cartItemCount = 0;
 
-  int get _cartItemCount => 0; // Thay bằng logic lấy số lượng thực tế nếu cần
+  // Controllers
+  final _recipientNameController = TextEditingController();
+  final _recipientPhoneController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _shippingAddressDetailController = TextEditingController();
+  final _noteController = TextEditingController();
+  final _couponController = TextEditingController();
+  final _loyaltyPointsController = TextEditingController(text: '0');
 
+  // State Variables
   bool _isLoading = false;
+  bool _isLoadingProvinces = false;
+  bool _isLoadingWards = false;
   String? _errorMessage;
-
-  // State cho địa chỉ (Chỉ còn 2 cấp)
+  
   List<Province> _provinces = [];
   Province? _selectedProvince;
-  bool _isLoadingProvinces = false;
-
   List<Ward> _currentWards = [];
   Ward? _selectedWard;
-  bool _isLoadingWards = false;
 
   String _selectedPaymentMethod = 'Tiền mặt';
-
-  final TextEditingController _recipientNameController = TextEditingController();
-  final TextEditingController _recipientPhoneController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _shippingAddressDetailController = TextEditingController();
-  final TextEditingController _noteController = TextEditingController();
-  final TextEditingController _couponController = TextEditingController();
-  final TextEditingController _loyaltyPointsController = TextEditingController(text: '0');
-
   final List<String> _paymentMethods = ['Tiền mặt', 'Thanh toán Online (VNPAY)'];
 
-  // State Coupon & Points
+  // Calculation State
   int _userLoyaltyPoints = 0;
   int _calculatedCouponDiscount = 0;
   int _estimatedCartTotal = 0;
@@ -111,143 +108,9 @@ class _CheckoutInfoScreenState extends State<CheckoutInfoScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchProvinces(); // Load Tỉnh ngay khi vào
-    _loadUserInfo();
-  }
-
-  // --- API HELPER: Lấy ngày hiện tại để gắn vào URL (theo format YYYY-MM-DD) ---
-  // API Cas.so yêu cầu version date, dùng date hiện tại hoặc hardcode ngày release mới nhất
-  String get _currentApiDateStr => "2025-07-01"; // Hardcode theo link mẫu bạn đưa
-
-  Future<void> _loadUserInfo() async {
-    // 1. Điền thông tin text cơ bản
-    _recipientNameController.text = widget.currentUserData?['full_name'] ?? '';
-    _recipientPhoneController.text = widget.currentUserData?['phone'] ?? '';
-    _emailController.text = widget.currentUserData?['email'] ?? '';
-
-    if (widget.userId.isNotEmpty) {
-      try {
-        // B1: Đảm bảo đã tải danh sách tỉnh
-        if (_provinces.isEmpty) {
-          await _fetchProvinces();
-        }
-
-        final userProfile = await _apiService.getUserProfile();
-        
-        if (mounted && userProfile != null && _provinces.isNotEmpty) {
-          setState(() {
-            _userLoyaltyPoints = userProfile.loyaltyPoints;
-
-            if (userProfile.addresses.isNotEmpty) {
-              // Lấy địa chỉ mặc định
-              final defaultAddr = userProfile.addresses.firstWhere(
-                  (a) => a.isDefault,
-                  orElse: () => userProfile.addresses.first
-              );
-
-              // Dữ liệu từ DB:
-              // addressLine: "71, Ấp Rạch Đập, Xã Nhị Long"
-              // city: "Vĩnh Long"
-              String dbAddressLine = defaultAddr.addressLine; 
-              String dbCity = defaultAddr.city; 
-
-              // --- LOGIC TÌM TỈNH (Sửa lại: Dựa vào field 'city') ---
-              Province? matchedProvince;
-              
-              try {
-                // Tìm trong API xem có tỉnh nào tên giống dbCity không
-                // API: "Tỉnh Vĩnh Long" vs DB: "Vĩnh Long" -> Contains sẽ khớp
-                matchedProvince = _provinces.firstWhere(
-                  (p) => p.name.toLowerCase().contains(dbCity.toLowerCase()) || 
-                         dbCity.toLowerCase().contains(p.name.toLowerCase())
-                );
-              } catch (_) {
-                 print("Không tìm thấy tỉnh khớp với city: $dbCity. Thử tìm trong addressLine...");
-                 // Fallback: Nếu field city rỗng hoặc sai, thử tìm trong addressLine như cũ
-                 try {
-                   matchedProvince = _provinces.firstWhere(
-                    (p) => dbAddressLine.toLowerCase().contains(p.name.toLowerCase())
-                   );
-                 } catch (_) {}
-              }
-
-              if (matchedProvince != null) {
-                _selectedProvince = matchedProvince;
-
-                // --- LOGIC TÌM XÃ (Dựa vào field 'addressLine') ---
-                // Gọi API lấy xã
-                _fetchWardsDirectly(matchedProvince.code).then((_) {
-                   if (!mounted) return;
-                   
-                   try {
-                     // Tìm xã trong list API khớp với chuỗi "71, Ấp Rạch Đập, Xã Nhị Long"
-                     // API Ward: "Xã Nhị Long"
-                     final matchedWard = _currentWards.firstWhere(
-                       (w) => dbAddressLine.toLowerCase().contains(w.name.toLowerCase())
-                     );
-                     
-                     setState(() {
-                       _selectedWard = matchedWard;
-                       
-                       // --- LÀM SẠCH CHUỖI ---
-                       String cleanAddr = dbAddressLine;
-                       
-                       // 1. Xóa tên Tỉnh (nếu lỡ có trong addressLine)
-                       cleanAddr = cleanAddr.replaceAll(matchedProvince!.name, "")
-                                            .replaceAll(dbCity, ""); // Xóa luôn cái text trong DB cho chắc
-                       
-                       // 2. Xóa tên Xã ("Xã Nhị Long")
-                       cleanAddr = cleanAddr.replaceAll(matchedWard.name, "");
-                       
-                       // 3. Xóa từ khóa thừa & dấu phẩy
-                       cleanAddr = cleanAddr.replaceAll("Tỉnh", "")
-                                            .replaceAll("Thành phố", "")
-                                            .replaceAll("Xã", "")
-                                            .replaceAll("Phường", "")
-                                            .replaceAll("Thị trấn", "")
-                                            .replaceAll(",", "")
-                                            .trim();
-                       
-                       // Xử lý khoảng trắng kép
-                       while (cleanAddr.contains("  ")) {
-                         cleanAddr = cleanAddr.replaceAll("  ", " ");
-                       }
-
-                       // Kết quả mong đợi: "71 Ấp Rạch Đập"
-                       _shippingAddressDetailController.text = cleanAddr;
-                     });
-                     
-                   } catch (e) {
-                     print("Tìm thấy Tỉnh nhưng không tìm thấy Xã trong chuỗi: $dbAddressLine");
-                     // Nếu không tìm thấy xã, chỉ điền nguyên chuỗi addressLine vào ô chi tiết
-                     // (Có thể user nhập tay xã không chuẩn với API)
-                     setState(() {
-                        _shippingAddressDetailController.text = dbAddressLine;
-                     });
-                   }
-                });
-              } else {
-                // Không tìm thấy tỉnh
-                _shippingAddressDetailController.text = dbAddressLine;
-                // Có thể nối thêm city vào nếu cần
-                // _shippingAddressDetailController.text = "$dbAddressLine, $dbCity";
-              }
-            }
-          });
-        }
-      } catch (e) {
-        print("Lỗi load profile: $e");
-      }
-    }
-
-    // 3. Load thông tin giỏ hàng
-    final CartService cartService = CartService();
-    final items = await cartService.getCartItems();
-    if (mounted) {
-      setState(() {
-        _estimatedCartTotal = items.fold(0, (sum, item) => sum + (item.price * item.quantity));
-      });
-    }
+    _fetchProvinces();
+    _fetchHeaderData(); // Tải danh mục cho Header
+    _loadUserInfoAndCart(); // Tải user info và cart
   }
 
   @override
@@ -262,615 +125,525 @@ class _CheckoutInfoScreenState extends State<CheckoutInfoScreen> {
     super.dispose();
   }
 
-  // --- API Địa chỉ mới (2 cấp) ---
-  
-  // 1. Lấy danh sách Tỉnh
-  Future<void> _fetchProvinces() async {
-    if (!mounted) return;
-    setState(() { _isLoadingProvinces = true; _errorMessage = null; });
-    
-    // URL: https://production.cas.so/address-kit/2025-07-01/provinces
-    final url = Uri.parse('$_apiBaseUrl/$_currentApiDateStr/provinces'); 
-    
+  // --- LOGIC FUNCTIONS ---
+
+  Future<void> _fetchHeaderData() async {
     try {
-      final response = await http.get(url, headers: {
-        'Accept': 'application/json',
-        // 'x-api-key': 'YOUR_KEY' // Thêm key nếu API yêu cầu
-      }).timeout(const Duration(seconds: 15));
-
-      if (mounted) {
-        if (response.statusCode == 200) {
-          // Xử lý utf8
-          final decodedBody = utf8.decode(response.bodyBytes);
-          final Map<String, dynamic> jsonResponse = jsonDecode(decodedBody);
-          
-          // Dữ liệu nằm trong key "provinces"
-          final List<dynamic> listData = jsonResponse['provinces'] ?? [];
-
-          setState(() {
-            _provinces = listData.map((json) => Province.fromJson(json)).toList();
-            _isLoadingProvinces = false;
-          });
-        } else {
-          print('Error fetch provinces: ${response.statusCode}');
-          setState(() { _isLoadingProvinces = false; });
-        }
-      }
-    } catch (e) {
-      print('Exception fetch provinces: $e');
-      if (mounted) setState(() { _isLoadingProvinces = false; });
-    }
-  }
-
-  // 2. Lấy danh sách Xã (trực tiếp từ Tỉnh)
-  Future<void> _fetchWardsDirectly(String provinceCode) async {
-    if (!mounted) return;
-    setState(() { 
-      _isLoadingWards = true; 
-      _currentWards = []; 
-      _selectedWard = null; 
-      _errorMessage = null; 
-    });
-
-    // URL dự kiến: .../provinces/{code}/communes
-    // Lưu ý: Endpoint này trả về danh sách xã/phường/thị trấn thuộc Tỉnh
-    final url = Uri.parse('$_apiBaseUrl/$_currentApiDateStr/provinces/$provinceCode/communes');
-
-    try {
-      final response = await http.get(url, headers: {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 15));
-
-      if (mounted) {
-        if (response.statusCode == 200) {
-          final decodedBody = utf8.decode(response.bodyBytes);
-          final Map<String, dynamic> jsonResponse = jsonDecode(decodedBody);
-          
-          // API Cas.so thường trả về key "communes" hoặc "wards"
-          // Ta check an toàn cả 2 trường hợp hoặc log ra xem
-          final List<dynamic> listData = jsonResponse['communes'] ?? jsonResponse['wards'] ?? [];
-
-          setState(() {
-            _currentWards = listData.map((json) => Ward.fromJson(json)).toList();
-            _isLoadingWards = false;
-          });
-        } else {
-          print('Error fetch wards: ${response.statusCode}');
-          setState(() { _isLoadingWards = false; });
-        }
-      }
-    } catch (e) {
-      print('Exception fetch wards: $e');
-      if (mounted) setState(() { _isLoadingWards = false; });
-    }
-  }
-
-  // --- Kiểm tra Coupon ---
-  Future<void> _checkCoupon() async {
-    final code = _couponController.text.trim();
-    if (code.isEmpty) {
-      setState(() => _couponError = "Vui lòng nhập mã");
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _couponError = null;
-      _calculatedCouponDiscount = 0;
-      _isCouponApplied = false;
-    });
-
-    try {
-      final result = await _apiService.validateDiscount(code, _estimatedCartTotal);
-
+      final categories = await _apiService.getCategories();
       if (mounted) {
         setState(() {
-          _isLoading = false;
-          if (result['valid'] == true) {
-            _calculatedCouponDiscount = (result['discountAmount'] as num).toInt();
-            _isCouponApplied = true;
-            ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text("Áp dụng mã thành công! Giảm ${_calculatedCouponDiscount}đ"),
-                  backgroundColor: Colors.green,
-                )
-            );
-          } else {
-            _couponError = result['message'];
-            _isCouponApplied = false;
-          }
+          _headerCategories = categories;
         });
       }
     } catch (e) {
-      if (mounted) setState(() { _isLoading = false; _couponError = "Lỗi kiểm tra mã: $e"; });
+      debugPrint("Lỗi tải danh mục header: $e");
     }
   }
 
-  // --- Xử lý Submit ---
-  Future<void> _proceedToPaymentScreen() async {
+  Future<void> _loadUserInfoAndCart() async {
+    // 1. Điền thông tin User vào Form
+    _recipientNameController.text = widget.currentUserData?['full_name'] ?? '';
+    _recipientPhoneController.text = widget.currentUserData?['phone'] ?? '';
+    _emailController.text = widget.currentUserData?['email'] ?? '';
+
+    // 2. Load giỏ hàng để tính tạm tính & cập nhật badge trên Header
+    final items = await _cartService.getCartItems();
+    int total = items.fold(0, (sum, item) => sum + (item.price * item.quantity));
+
+    if (mounted) {
+      setState(() {
+        _estimatedCartTotal = total;
+        _cartItemCount = items.length; // Cập nhật badge header
+      });
+    }
+
+    // 3. Load điểm tích lũy và địa chỉ mặc định (nếu có user ID)
+    if (widget.userId.isNotEmpty) {
+      try {
+        if (_provinces.isEmpty) await _fetchProvinces();
+        final userProfile = await _apiService.getUserProfile();
+        
+        if (mounted && userProfile != null) {
+          setState(() => _userLoyaltyPoints = userProfile.loyaltyPoints);
+          
+          if (_provinces.isNotEmpty && userProfile.addresses.isNotEmpty) {
+            final defaultAddr = userProfile.addresses.firstWhere((a) => a.isDefault, orElse: () => userProfile.addresses.first);
+            _autoFillAddress(defaultAddr.city, defaultAddr.addressLine);
+          }
+        }
+      } catch (e) {
+        debugPrint("Lỗi load profile: $e");
+      }
+    }
+  }
+
+  Future<void> _autoFillAddress(String dbCity, String dbAddressLine) async {
+    Province? matchedProvince;
+    try {
+      matchedProvince = _provinces.firstWhere((p) => 
+        p.name.toLowerCase().contains(dbCity.toLowerCase()) || dbCity.toLowerCase().contains(p.name.toLowerCase())
+      );
+    } catch (_) {}
+
+    if (matchedProvince != null) {
+      setState(() => _selectedProvince = matchedProvince);
+      await _fetchWardsDirectly(matchedProvince.code);
+      if (!mounted) return;
+      
+      try {
+        final matchedWard = _currentWards.firstWhere((w) => dbAddressLine.toLowerCase().contains(w.name.toLowerCase()));
+        setState(() {
+          _selectedWard = matchedWard;
+          // Clean address detail logic
+          String clean = dbAddressLine
+              .replaceAll(matchedProvince!.name, "")
+              .replaceAll(dbCity, "")
+              .replaceAll(matchedWard.name, "")
+              .replaceAll(RegExp(r'(Tỉnh|Thành phố|Xã|Phường|Thị trấn)'), "")
+              .replaceAll(",", "")
+              .trim()
+              .replaceAll(RegExp(r'\s+'), ' ');
+          _shippingAddressDetailController.text = clean;
+        });
+      } catch (_) {
+        setState(() => _shippingAddressDetailController.text = dbAddressLine);
+      }
+    } else {
+      setState(() => _shippingAddressDetailController.text = dbAddressLine);
+    }
+  }
+
+  Future<void> _fetchProvinces() async {
     if (!mounted) return;
+    setState(() => _isLoadingProvinces = true);
+    try {
+      final response = await http.get(Uri.parse('$_apiBaseUrl/$_currentApiDateStr/provinces'), headers: {'Accept': 'application/json'}).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200 && mounted) {
+        final listData = jsonDecode(utf8.decode(response.bodyBytes))['provinces'] ?? [];
+        setState(() => _provinces = listData.map<Province>((json) => Province.fromJson(json)).toList());
+      }
+    } catch (_) {} 
+    finally { if (mounted) setState(() => _isLoadingProvinces = false); }
+  }
+
+  Future<void> _fetchWardsDirectly(String provinceCode) async {
+    if (!mounted) return;
+    setState(() { _isLoadingWards = true; _currentWards = []; _selectedWard = null; });
+    try {
+      final response = await http.get(Uri.parse('$_apiBaseUrl/$_currentApiDateStr/provinces/$provinceCode/communes'), headers: {'Accept': 'application/json'}).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200 && mounted) {
+        final json = jsonDecode(utf8.decode(response.bodyBytes));
+        final listData = json['communes'] ?? json['wards'] ?? [];
+        setState(() => _currentWards = listData.map<Ward>((json) => Ward.fromJson(json)).toList());
+      }
+    } catch (_) {}
+    finally { if (mounted) setState(() => _isLoadingWards = false); }
+  }
+
+  Future<void> _checkCoupon() async {
+    final code = _couponController.text.trim();
+    if (code.isEmpty) { setState(() => _couponError = "Vui lòng nhập mã"); return; }
+    setState(() { _isLoading = true; _couponError = null; _calculatedCouponDiscount = 0; _isCouponApplied = false; });
+
+    try {
+      final result = await _apiService.validateDiscount(code, _estimatedCartTotal);
+      if (mounted) {
+        setState(() {
+          if (result['valid'] == true) {
+            _calculatedCouponDiscount = (result['discountAmount'] as num).toInt();
+            _isCouponApplied = true;
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Áp dụng mã thành công: -${NumberFormat('#,##0').format(_calculatedCouponDiscount)}đ"), backgroundColor: Colors.green));
+          } else {
+            _couponError = result['message'];
+          }
+        });
+      }
+    } catch (e) { if (mounted) setState(() => _couponError = "Lỗi: $e"); }
+    finally { if (mounted) setState(() => _isLoading = false); }
+  }
+
+  Future<void> _proceedToPaymentScreen() async {
     setState(() { _isLoading = true; _errorMessage = null; });
 
     // Validate
-    if (_recipientNameController.text.trim().isEmpty ||
-        _recipientPhoneController.text.trim().isEmpty ||
-        _shippingAddressDetailController.text.trim().isEmpty ||
-        _selectedProvince == null ||
-        _selectedWard == null) { 
-      setState(() { 
-        _errorMessage = "Vui lòng điền đầy đủ thông tin (bao gồm Tỉnh và Xã/Phường)."; 
-        _isLoading = false; 
-      });
-      return;
+    if (_recipientNameController.text.isEmpty || _recipientPhoneController.text.isEmpty || _shippingAddressDetailController.text.isEmpty || _selectedProvince == null || _selectedWard == null) { 
+      setState(() { _errorMessage = "Vui lòng điền đầy đủ thông tin giao hàng (*)"; _isLoading = false; }); return;
     }
 
-    int pointsToUse = int.tryParse(_loyaltyPointsController.text.trim()) ?? 0;
+    int pointsToUse = int.tryParse(_loyaltyPointsController.text) ?? 0;
     if (pointsToUse > _userLoyaltyPoints) {
-      setState(() {
-        _errorMessage = "Số điểm nhập vượt quá số điểm hiện có.";
-        _pointsError = "Tối đa $_userLoyaltyPoints điểm";
-        _isLoading = false;
-      });
-      return;
+      setState(() { _pointsError = "Bạn chỉ có $_userLoyaltyPoints điểm"; _isLoading = false; }); return;
     }
 
-    // Tạo chuỗi địa chỉ đầy đủ để lưu database
-    String fullAddress = _shippingAddressDetailController.text.trim();
-    fullAddress += ", ${_selectedWard!.name}";
-    fullAddress += ", ${_selectedProvince!.name}";
-
+    String fullAddress = "${_shippingAddressDetailController.text}, ${_selectedWard!.name}, ${_selectedProvince!.name}";
+    
     try {
-      final CartService cartService = CartService();
-      List<CartItem> cartItems = await cartService.getCartItems();
-      if (cartItems.isEmpty) {
-        setState(() { _errorMessage = "Giỏ hàng trống."; _isLoading = false; });
-        return;
-      }
+      final items = await _cartService.getCartItems();
+      if (items.isEmpty) { setState(() { _errorMessage = "Giỏ hàng trống."; _isLoading = false; }); return; }
 
-      int itemsPrice = cartItems.fold(0, (sum, item) => sum + (item.price * item.quantity));
+      int itemsPrice = items.fold(0, (sum, i) => sum + (i.price * i.quantity));
       int shippingFee = itemsPrice > 500000 ? 0 : 30000;
       int loyaltyDiscount = pointsToUse * 1000;
-
       int remainingTotal = itemsPrice + shippingFee - _calculatedCouponDiscount;
-      if (loyaltyDiscount > remainingTotal) {
-        loyaltyDiscount = remainingTotal;
-      }
-
+      if (loyaltyDiscount > remainingTotal) loyaltyDiscount = remainingTotal;
       int totalAmount = itemsPrice + shippingFee - _calculatedCouponDiscount - loyaltyDiscount;
       if (totalAmount < 0) totalAmount = 0;
 
-      final Map<String, dynamic> previewData = {
-        'items': cartItems.map((e) => {
-          'product_id': e.productId,
-          'variant_id': e.variantId,
-          'quantity': e.quantity,
-          'price_at_purchase': e.price,
+      final previewData = {
+        'items': items.map((e) => {
+          'product_id': e.productId, 'variant_id': e.variantId, 'quantity': e.quantity, 'price_at_purchase': e.price,
           'variant': { 'name': e.name, 'image_url': e.image }
         }).toList(),
-        'subtotal': itemsPrice,
+        'subtotal': itemsPrice, 
         'shipping_fee': shippingFee,
-        'coupon_discount_amount': _calculatedCouponDiscount,
+        'coupon_discount_amount': _calculatedCouponDiscount, 
         'loyalty_discount_amount': loyaltyDiscount,
         'total_amount': totalAmount,
-        'recipient_name': _recipientNameController.text,
+        'recipient_name': _recipientNameController.text, 
         'recipient_phone': _recipientPhoneController.text,
-        'shipping_address': fullAddress, // Gửi chuỗi đầy đủ
-        'notes': _noteController.text,
+        'shipping_address': fullAddress, 
+        'notes': _noteController.text, 
         'payment_method': _selectedPaymentMethod,
-        'applied_coupon': _isCouponApplied ? {'code': _couponController.text.trim()} : null,
-        'loyalty_points_used': pointsToUse,
+        'applied_coupon': _isCouponApplied ? {'code': _couponController.text} : null,
+        'loyalty_points_used': pointsToUse, 
         'guest_email_from_api_if_any': _emailController.text
       };
 
       if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => CheckoutPaymentScreen(
-              previewOrderData: previewData,
-              guestEmail: _emailController.text.isNotEmpty ? _emailController.text : null,
-              userId: widget.userId,
-            ),
-          ),
-        );
+        Navigator.push(context, MaterialPageRoute(builder: (_) => CheckoutPaymentScreen(
+          previewOrderData: previewData, 
+          guestEmail: _emailController.text.isNotEmpty ? _emailController.text : null, 
+          userId: widget.userId
+        )));
       }
-
-    } catch (e) {
-      if (mounted) setState(() { _errorMessage = "Lỗi xử lý: $e"; });
-    } finally {
-      if (mounted) setState(() { _isLoading = false; });
-    }
+    } catch (e) { setState(() => _errorMessage = "Lỗi xử lý: $e"); } 
+    finally { if (mounted) setState(() => _isLoading = false); }
   }
 
-  // --- UI Helpers ---
-  void _navigateToCatalog(int categoryId, String categoryName) {
-    print('Navigating to: $categoryName');
-  }
-
-  void _onCartPressed() {
-    if (Navigator.canPop(context)) Navigator.pop(context);
-  }
-
-  void _onAccountPressed() {}
+  // --- UI CONSTRUCTION ---
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final bool isDesktop = screenWidth > 800;
 
-    return Stack(
-      children: [
-        Scaffold(
-          backgroundColor: AppColors.themePageBackground,
-          appBar: PreferredSize(
-            preferredSize: Size.fromHeight(
-                kIsWeb ? (screenWidth > 900 ? 60 : 50) : 45 + MediaQuery.of(context).padding.top),
-            child: CustomHeader(
-              categories: _categories,
-              currentUserData: widget.currentUserData,
-              cartItemCount: _cartItemCount,
-              onCartPressed: _onCartPressed,
-              onAccountPressed: _onAccountPressed,
-              onCategorySelected: (Map<String, dynamic> selectedCategory) {
-                final categoryId = selectedCategory['category_id'] as int?;
-                final categoryName = selectedCategory['name'] as String?;
-                if (categoryId != null && categoryName != null) {
-                  _navigateToCatalog(categoryId, categoryName);
-                }
-              },
-              onLogoTap: () => Navigator.of(context).popUntil((route) => route.isFirst),
-              onSearchSubmitted: (value) => print('Search: $value'),
+    return Scaffold(
+      backgroundColor: CheckoutStyle.bg,
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(kIsWeb ? 110 : 60 + MediaQuery.of(context).padding.top),
+        child: CustomHeader(
+          categories: _headerCategories,
+          currentUserData: widget.currentUserData,
+          cartItemCount: _cartItemCount, 
+          onCartPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen())),
+          onAccountPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountPage())),
+          onLogoTap: () => Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (r) => false),
+        ),
+      ),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: EdgeInsets.only(
+              left: isDesktop ? (screenWidth - 800) / 2 : 16,
+              right: isDesktop ? (screenWidth - 800) / 2 : 16,
+              top: 20,
+              bottom: 120, // Space for Bottom Bar
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildStepIndicator(),
+                const SizedBox(height: 24),
+                
+                Row(
+                  children: [
+                    InkWell(
+                      onTap: () => Navigator.pop(context),
+                      child: const Icon(Icons.arrow_back_ios_new, size: 20),
+                    ),
+                    const SizedBox(width: 8),
+                    Text("Thông tin giao hàng", style: CheckoutStyle.header.copyWith(fontSize: 20)),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // 1. User Information
+                _buildSectionCard(
+                  title: "THÔNG TIN NGƯỜI NHẬN",
+                  icon: Icons.person_outline,
+                  child: Column(
+                    children: [
+                      _buildTextField("Họ và tên *", _recipientNameController, Icons.account_circle_outlined),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _buildTextField("Số điện thoại *", _recipientPhoneController, Icons.phone_android_outlined, type: TextInputType.phone)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField("Email (nhận hóa đơn)", _emailController, Icons.email_outlined, type: TextInputType.emailAddress)),
+                        ],
+                      ),
+                    ],
+                  )
+                ),
+                const SizedBox(height: 16),
+
+                // 2. Address
+                _buildSectionCard(
+                  title: "ĐỊA CHỈ GIAO HÀNG",
+                  icon: Icons.location_on_outlined,
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildDropdown<Province>(
+                              "Tỉnh / Thành phố", 
+                              _selectedProvince, 
+                              _provinces, 
+                              (v) {
+                                if (v == null) return;
+                                setState(() { _selectedProvince = v; _selectedWard = null; _currentWards = []; });
+                                _fetchWardsDirectly(v.code);
+                              }, 
+                              isLoading: _isLoadingProvinces
+                            )
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildDropdown<Ward>(
+                              "Xã / Phường", 
+                              _selectedWard, 
+                              _currentWards, 
+                              (v) => setState(() => _selectedWard = v), 
+                              isLoading: _isLoadingWards
+                            )
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTextField("Địa chỉ chi tiết (Số nhà, tên đường...) *", _shippingAddressDetailController, Icons.home_outlined),
+                      const SizedBox(height: 12),
+                      _buildTextField("Ghi chú cho shipper (Tùy chọn)", _noteController, Icons.note_alt_outlined),
+                    ],
+                  )
+                ),
+                const SizedBox(height: 16),
+
+                // 3. Payment & Offers
+                _buildSectionCard(
+                  title: "THANH TOÁN & ƯU ĐÃI",
+                  icon: Icons.confirmation_number_outlined,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: _selectedPaymentMethod,
+                        items: _paymentMethods.map((m) => DropdownMenuItem(value: m, child: Text(m, style: CheckoutStyle.body))).toList(),
+                        onChanged: (v) => setState(() => _selectedPaymentMethod = v!),
+                        decoration: _inputDeco("Phương thức thanh toán", Icons.payment),
+                        icon: const Icon(Icons.keyboard_arrow_down),
+                      ),
+                      const SizedBox(height: 20),
+                      
+                      const Text("Mã giảm giá", style: TextStyle(fontWeight: FontWeight.w500)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(child: _buildTextField("Nhập mã voucher", _couponController, null, error: _couponError)),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            height: 48,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _checkCoupon,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: CheckoutStyle.primary,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                elevation: 0
+                              ),
+                              child: const Text("Áp dụng", style: TextStyle(color: Colors.white)),
+                            ),
+                          )
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      
+                      // Loyalty Points Section
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange.shade200)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              const Icon(Icons.stars, color: Colors.orange, size: 20),
+                              const SizedBox(width: 8),
+                              Text("Điểm tích lũy: ${NumberFormat('#,##0').format(_userLoyaltyPoints)}", style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+                            ]),
+                            const SizedBox(height: 8),
+                            _buildTextField("Sử dụng điểm (1đ = 1.000đ)", _loyaltyPointsController, Icons.redeem, type: TextInputType.number, error: _pointsError),
+                          ],
+                        ),
+                      )
+                    ],
+                  )
+                ),
+
+                if (_errorMessage != null) 
+                  Container(
+                    margin: const EdgeInsets.only(top: 20),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(8)),
+                    child: Row(children: [
+                      const Icon(Icons.error_outline, color: Colors.red),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w500))),
+                    ]),
+                  )
+              ],
             ),
           ),
-          body: SingleChildScrollView(
-            child: Center(
-              child: Container(
-                width: isDesktop ? 800 : double.infinity,
-                padding: EdgeInsets.symmetric(
-                    horizontal: isDesktop ? 0 : 16.0, vertical: 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+
+          // Sticky Bottom Bar
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              padding: EdgeInsets.only(
+                left: 20, right: 20, top: 16, 
+                bottom: MediaQuery.of(context).padding.bottom + 16
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -4))],
+              ),
+              child: SafeArea(
+                child: Row(
                   children: [
-                    _buildStepIndicator(),
-                    const SizedBox(height: 24),
-                    _buildSectionTitle("THÔNG TIN KHÁCH HÀNG"),
-                    _buildCustomerInfoCard(),
-                    const SizedBox(height: 24),
-                    _buildSectionTitle("ĐỊA CHỈ GIAO HÀNG"),
-                    _buildDeliveryDetailsCard(),
-                    const SizedBox(height: 16),
-                    _buildSectionTitle("THANH TOÁN & ƯU ĐÃI"),
-                    _buildPaymentAndPromoCard(),
-                    const SizedBox(height: 16),
-                    _buildProceedButton(),
-                    if (_errorMessage != null && !(_isLoadingProvinces || _isLoadingWards || _isLoading))
-                      Padding(
-                        padding: const EdgeInsets.only(top: 20.0),
-                        child: Center(
-                          child: Text(
-                            _errorMessage!,
-                            style: GoogleFonts.montserrat(color: Colors.red, fontSize: 14, fontWeight: FontWeight.w500),
-                            textAlign: TextAlign.center,
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("Tạm tính", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          Text(
+                            NumberFormat("#,##0₫", "vi_VN").format(_estimatedCartTotal),
+                            style: GoogleFonts.roboto(fontSize: 20, fontWeight: FontWeight.bold, color: CheckoutStyle.primary),
                           ),
-                        ),
+                        ],
                       ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _proceedToPaymentScreen,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: CheckoutStyle.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                        ),
+                        child: _isLoading 
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                          : const Text("TIẾP TỤC", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                      ),
+                    )
                   ],
                 ),
               ),
             ),
-          ),
-        ),
-        if (_isLoadingProvinces || _isLoadingWards || _isLoading)
-          Container(
-            color: Colors.black.withOpacity(0.3),
-            child: const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.white))),
-          ),
-      ],
-    );
-  }
-
-  // ... (Giữ nguyên các hàm build UI con như _buildStepIndicator, _buildSectionTitle, _buildCustomerInfoCard, _buildPaymentAndPromoCard, _buildDropdownField, _inputDecoration, _buildProceedButton từ code trước. Chúng không thay đổi logic)
-  
-  Widget _buildStepIndicator() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _buildStepItem("1. THÔNG TIN", isActive: true),
-          Container(
-            width: 60, height: 1, color: AppColors.borderGrey,
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-          ),
-          _buildStepItem("2. THANH TOÁN", isActive: false),
+          )
         ],
       ),
     );
   }
 
-  Widget _buildStepItem(String title, {required bool isActive}) {
-    return Column(
+  // --- Helper Widgets ---
+
+  Widget _buildStepIndicator() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text(title,
-          style: GoogleFonts.montserrat(
-            fontSize: 14,
-            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-            color: isActive ? AppColors.primaryRed : AppColors.textGrey,
-          ),
-        ),
-        if (isActive) ...[
-          const SizedBox(height: 4),
-          Container(width: 60, height: 2, color: AppColors.primaryRed),
-        ]
+        _buildStepIcon("1", "Thông tin", true),
+        Container(width: 40, height: 2, color: Colors.grey[300]),
+        _buildStepIcon("2", "Thanh toán", false),
+        Container(width: 40, height: 2, color: Colors.grey[300]),
+        _buildStepIcon("3", "Hoàn tất", false),
       ],
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0, top: 8.0),
-      child: Text(title,
-        style: GoogleFonts.montserrat(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textBlack),
-      ),
-    );
-  }
-
-  Widget _buildCustomerInfoCard() {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("THÔNG TIN LIÊN HỆ", style: GoogleFonts.montserrat(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textBlack)),
-            const SizedBox(height: 12),
-            Text("Họ và tên người nhận *", style: GoogleFonts.montserrat(fontSize: 13, color: AppColors.textLightGrey, fontWeight: FontWeight.w500)),
-            TextFormField(
-              controller: _recipientNameController,
-              style: GoogleFonts.montserrat(fontSize: 14, color: AppColors.textBlack),
-              decoration: _inputDecoration("Nhập họ và tên"),
-            ),
-            const SizedBox(height: 12),
-            Text("Số điện thoại người nhận *", style: GoogleFonts.montserrat(fontSize: 13, color: AppColors.textLightGrey, fontWeight: FontWeight.w500)),
-            TextFormField(
-              controller: _recipientPhoneController,
-              style: GoogleFonts.montserrat(fontSize: 14, color: AppColors.textBlack),
-              keyboardType: TextInputType.phone,
-              decoration: _inputDecoration("Nhập số điện thoại"),
-            ),
-            const SizedBox(height: 12),
-            Text("Email (dùng cho hóa đơn VAT)", style: GoogleFonts.montserrat(fontSize: 13, color: AppColors.textLightGrey, fontWeight: FontWeight.w500)),
-            TextFormField(
-              controller: _emailController,
-              style: GoogleFonts.montserrat(fontSize: 14, color: AppColors.textBlack),
-              keyboardType: TextInputType.emailAddress,
-              decoration: _inputDecoration("Nhập email"),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDeliveryDetailsCard() {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Cấp 1: Tỉnh
-            _buildDropdownField<Province>(
-              label: "Tỉnh / Thành Phố *",
-              value: _selectedProvince,
-              items: _provinces,
-              onChanged: (Province? newValue) {
-                if (newValue != null) {
-                  setState(() {
-                    _selectedProvince = newValue;
-                    _selectedWard = null; 
-                    _currentWards = [];
-                    if(mounted) _fetchWardsDirectly(newValue.code);
-                  });
-                }
-              },
-              hint: _isLoadingProvinces ? "Đang tải tỉnh/thành..." : "Chọn tỉnh / thành phố",
-              disabled: _isLoadingProvinces,
-            ),
-            const SizedBox(height: 16),
-
-            // Cấp 2: Xã / Phường (Trực thuộc Tỉnh)
-            _buildDropdownField<Ward>(
-              label: "Xã / Phường / Thị trấn *",
-              value: _selectedWard,
-              items: _currentWards,
-              onChanged: (Ward? newValue) {
-                if (newValue != null) {
-                  setState(() { _selectedWard = newValue; });
-                }
-              },
-              hint: _isLoadingWards 
-                  ? "Đang tải xã/phường..." 
-                  : (_selectedProvince == null ? "Vui lòng chọn Tỉnh/Thành trước" : "Chọn xã / phường / thị trấn"),
-              disabled: _isLoadingWards || _selectedProvince == null || _provinces.isEmpty,
-            ),
-            const SizedBox(height: 16),
-
-            Text("Số nhà, tên đường, chi tiết khác *",
-                style: GoogleFonts.montserrat(fontSize: 13, color: AppColors.textLightGrey, fontWeight: FontWeight.w500)),
-            TextFormField(
-              controller: _shippingAddressDetailController,
-              style: GoogleFonts.montserrat(fontSize: 14, color: AppColors.textBlack),
-              decoration: _inputDecoration("Nhập số nhà, tên đường, tòa nhà..."),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 16),
-            Text("Ghi chú (nếu có)", style: GoogleFonts.montserrat(fontSize: 13, color: AppColors.textLightGrey, fontWeight: FontWeight.w500)),
-            TextFormField(
-              controller: _noteController,
-              style: GoogleFonts.montserrat(fontSize: 14, color: AppColors.textBlack),
-              decoration: _inputDecoration("Nhập ghi chú cho đơn hàng"),
-              maxLines: 2,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPaymentAndPromoCard() {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Phương thức thanh toán", style: GoogleFonts.montserrat(fontSize: 13, color: AppColors.textLightGrey, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 4),
-            DropdownButtonFormField<String>(
-              value: _selectedPaymentMethod,
-              items: _paymentMethods.map((method) {
-                return DropdownMenuItem<String>(
-                  value: method,
-                  child: Text(method, style: GoogleFonts.montserrat(fontSize: 14, color: AppColors.textBlack)),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                if (mounted) setState(() => _selectedPaymentMethod = newValue ?? _paymentMethods.first);
-              },
-              decoration: _inputDecoration("Chọn phương thức thanh toán"),
-              isExpanded: true,
-            ),
-            const SizedBox(height: 16),
-
-            Text("Mã giảm giá", style: GoogleFonts.montserrat(fontSize: 13, color: AppColors.textLightGrey, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 4),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _couponController,
-                    style: GoogleFonts.montserrat(fontSize: 14, color: AppColors.textBlack),
-                    decoration: _inputDecoration("Nhập mã giảm giá").copyWith(errorText: _couponError),
-                    onChanged: (_) {
-                      if (_couponError != null) setState(() => _couponError = null);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 10),
-                SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _checkCoupon,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryRed,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: Text("Áp dụng", style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.w600)),
-                  ),
-                )
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            Text("Sử dụng điểm tích lũy (Hiện có: $_userLoyaltyPoints điểm)", style: GoogleFonts.montserrat(fontSize: 13, color: AppColors.textLightGrey, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 4),
-            TextFormField(
-              controller: _loyaltyPointsController,
-              style: GoogleFonts.montserrat(fontSize: 14, color: AppColors.textBlack),
-              keyboardType: TextInputType.number,
-              decoration: _inputDecoration("Nhập số điểm (1 điểm = 1000đ)").copyWith(
-                helperText: "Tối đa $_userLoyaltyPoints điểm",
-                helperStyle: GoogleFonts.montserrat(fontSize: 11, color: AppColors.textGrey),
-                errorText: _pointsError,
-              ),
-              onChanged: (value) {
-                final input = int.tryParse(value) ?? 0;
-                if (input > _userLoyaltyPoints) {
-                  setState(() => _pointsError = "Bạn chỉ có $_userLoyaltyPoints điểm");
-                } else if (_pointsError != null) {
-                  setState(() => _pointsError = null);
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  InputDecoration _inputDecoration(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: GoogleFonts.montserrat(fontSize: 14, color: AppColors.textLightGrey.withOpacity(0.7)),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.borderGrey)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.primaryRed)),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    );
-  }
-
-  Widget _buildDropdownField<T>({
-    required String label,
-    required T? value,
-    required List<T> items,
-    required ValueChanged<T?> onChanged,
-    required String hint,
-    bool disabled = false,
-  }) {
+  Widget _buildStepIcon(String step, String label, bool isActive) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.montserrat(fontSize: 13, color: AppColors.textLightGrey, fontWeight: FontWeight.w500)),
+        Container(
+          width: 28, height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? CheckoutStyle.primary : Colors.grey[200],
+            shape: BoxShape.circle,
+          ),
+          child: Text(step, style: TextStyle(color: isActive ? Colors.white : Colors.grey, fontWeight: FontWeight.bold)),
+        ),
         const SizedBox(height: 4),
-        DropdownButtonFormField<T>(
-          value: value,
-          items: items.map((T item) {
-            return DropdownMenuItem<T>(
-              value: item,
-              child: Text(item.toString(),
-                style: GoogleFonts.montserrat(fontSize: 14, color: AppColors.textBlack),
-                overflow: TextOverflow.ellipsis,
-              ),
-            );
-          }).toList(),
-          onChanged: disabled ? null : onChanged,
-          decoration: _inputDecoration(hint).copyWith(
-            filled: disabled,
-            fillColor: disabled ? Theme.of(context).disabledColor.withOpacity(0.05) : null,
-          ),
-          isExpanded: true,
-          icon: Icon(Icons.arrow_drop_down, color: disabled ? AppColors.textLightGrey.withOpacity(0.5) : AppColors.textGrey),
-        ),
+        Text(label, style: TextStyle(fontSize: 11, fontWeight: isActive ? FontWeight.bold : FontWeight.normal, color: isActive ? CheckoutStyle.primary : CheckoutStyle.textGrey)),
       ],
     );
   }
 
-  Widget _buildProceedButton() {
+  Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          onPressed: _isLoading ? null : _proceedToPaymentScreen,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primaryRed,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            textStyle: GoogleFonts.montserrat(fontSize: 16, fontWeight: FontWeight.bold),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            disabledBackgroundColor: AppColors.primaryRed.withOpacity(0.5),
-          ),
-          child: _isLoading
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-            : const Text("Tiếp tục"),
-        ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
       ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: Colors.blue[700]),
+              const SizedBox(width: 10),
+              Text(title, style: CheckoutStyle.title),
+            ],
+          ),
+          const Divider(height: 24, color: CheckoutStyle.border),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextField(String label, TextEditingController controller, IconData? icon, {TextInputType type = TextInputType.text, String? error}) {
+    return TextFormField(
+      controller: controller, keyboardType: type,
+      style: CheckoutStyle.body,
+      decoration: _inputDeco(label, icon).copyWith(errorText: error),
+    );
+  }
+
+  Widget _buildDropdown<T>(String label, T? value, List<T> items, ValueChanged<T?> onChanged, {bool isLoading = false}) {
+    return DropdownButtonFormField<T>(
+      value: value, 
+      items: items.map((e) => DropdownMenuItem(value: e, child: Text(e.toString(), style: CheckoutStyle.body, overflow: TextOverflow.ellipsis))).toList(),
+      onChanged: isLoading ? null : onChanged,
+      icon: const Icon(Icons.keyboard_arrow_down, size: 20),
+      isExpanded: true,
+      decoration: _inputDeco(isLoading ? "Đang tải dữ liệu..." : label, null),
+    );
+  }
+
+  InputDecoration _inputDeco(String label, IconData? icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(fontSize: 13, color: CheckoutStyle.textGrey),
+      prefixIcon: icon != null ? Icon(icon, size: 20, color: Colors.grey[400]) : null,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      fillColor: Colors.grey[50], filled: true,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: CheckoutStyle.border)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: CheckoutStyle.border)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: CheckoutStyle.primary)),
+      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.red)),
     );
   }
 }

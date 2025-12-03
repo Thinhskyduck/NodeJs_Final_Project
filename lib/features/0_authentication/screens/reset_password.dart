@@ -1,9 +1,9 @@
 import 'package:cross_platform_mobile_app_development/core/constants/app_constants.dart';
-
-import 'login.dart'; // Keep your actual path
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'login.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({super.key});
@@ -13,6 +13,11 @@ class ResetPasswordScreen extends StatefulWidget {
 }
 
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
+  // Constants
+  static const Color primaryColor = Color(0xFFD70018); // CellphoneS Red
+  static const Color textDark = Color(0xFF212529);
+  static const Color textGrey = Color(0xFF868E96);
+
   final TextEditingController emailController = TextEditingController();
   String errorMessage = "";
   bool isLoading = false;
@@ -56,173 +61,168 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Đã gửi liên kết đặt lại mật khẩu tới $email"),
+            content: Text("Link reset đã gửi tới $email"),
             backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       } else {
         final errorData = jsonDecode(response.body);
         setState(() {
           isLoading = false;
-          errorMessage =
-              'Lỗi: ${errorData['message'] ?? 'Không thể gửi email.'}';
+          errorMessage = 'Lỗi: ${errorData['message'] ?? 'Không thể gửi email.'}';
         });
       }
     } catch (e) {
       setState(() {
         isLoading = false;
-        errorMessage = "Đã xảy ra lỗi không mong muốn: ${e.toString()}";
+        errorMessage = "Đã xảy ra lỗi kết nối: ${e.toString()}";
       });
-    } finally {
-      if (mounted && isLoading) {
-        setState(() {
-          isLoading = false;
-        });
-      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final Color primaryColor = Colors.blue[700]!;
-    final Color textFieldBackgroundColor = Colors.blue[50]!;
+    final size = MediaQuery.of(context).size;
+    final isMobile = size.width < 800;
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const Login()),
-            );
-          },
-        ),
-        title:
-            const Text('Reset Password', style: TextStyle(color: Colors.white)),
-        backgroundColor: primaryColor,
-        elevation: 1,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [primaryColor.withOpacity(0.1), Colors.white],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            stops: const [0.0, 0.5],
-          ),
-        ),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 450),
-            child: SingleChildScrollView(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 30.0, vertical: 40.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Icon(
-                    Icons.lock_reset,
-                    size: 60,
-                    color: primaryColor,
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    "Forgot Your Password?",
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  Text(
-                    "Enter your email address below and we'll send you a link to reset your password.",
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: Colors.black54,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                  TextField(
-                    controller: emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      hintText: "Enter your email",
-                      prefixIcon: Icon(Icons.email_outlined,
-                          color: primaryColor, size: 20),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide.none,
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF5F5FA),
+        body: Stack(
+          children: [
+            // Decorations
+            Positioned(top: -150, right: -150, child: _buildBlob(primaryColor.withOpacity(0.05))),
+            Positioned(bottom: -150, left: -150, child: _buildBlob(Colors.blue.withOpacity(0.05))),
+
+            Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 450),
+                  child: Column(
+                    children: [
+                      // Icon Header
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: primaryColor.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 5))]),
+                        child: const Icon(Icons.lock_reset, size: 50, color: primaryColor),
                       ),
-                      filled: true,
-                      fillColor: textFieldBackgroundColor,
-                      contentPadding: const EdgeInsets.symmetric(
-                          vertical: 16.0, horizontal: 15.0),
-                    ),
-                  ),
-                  const SizedBox(height: 25),
-                  if (errorMessage.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 15.0),
-                      child: Text(
-                        errorMessage,
-                        style: TextStyle(color: Colors.red[700], fontSize: 14),
+                      const SizedBox(height: 24),
+                      
+                      Text(
+                        "Quên mật khẩu?",
+                        style: GoogleFonts.roboto(fontSize: 26, fontWeight: FontWeight.bold, color: textDark),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        "Nhập email của bạn, chúng tôi sẽ gửi liên kết để đặt lại mật khẩu.",
                         textAlign: TextAlign.center,
+                        style: GoogleFonts.roboto(fontSize: 15, color: textGrey, height: 1.4),
                       ),
-                    ),
-                  if (_emailSent)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 15.0),
-                      child: Text(
-                        "Password reset link sent to ${emailController.text.trim()}. Please check your inbox (and spam folder).",
-                        style: TextStyle(
-                            color: Colors.green[700],
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500),
-                        textAlign: TextAlign.center,
+                      const SizedBox(height: 32),
+
+                      // Main Card
+                      Container(
+                        padding: EdgeInsets.all(isMobile ? 24 : 32),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 30, offset: const Offset(0, 10))
+                          ]
+                        ),
+                        child: Column(
+                          children: [
+                            // Success State
+                            if (_emailSent)
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
+                                child: Column(
+                                  children: [
+                                    const Icon(Icons.check_circle_outline, color: Colors.green, size: 40),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      "Đã gửi thành công tới\n${emailController.text}",
+                                      textAlign: TextAlign.center,
+                                      style: GoogleFonts.roboto(color: Colors.green.shade800, fontWeight: FontWeight.w500),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text("Vui lòng kiểm tra hộp thư (cả mục Spam)", style: GoogleFonts.roboto(fontSize: 12, color: Colors.green.shade600)),
+                                  ],
+                                ),
+                              )
+                            else ...[
+                              // Error Message
+                              if (errorMessage.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 20),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
+                                    child: Text(errorMessage, style: const TextStyle(color: Colors.red, fontSize: 13), textAlign: TextAlign.center),
+                                  ),
+                                ),
+
+                              // Input Field
+                              TextFormField(
+                                controller: emailController,
+                                keyboardType: TextInputType.emailAddress,
+                                decoration: InputDecoration(
+                                  labelText: "Email của bạn",
+                                  prefixIcon: Icon(Icons.email_outlined, color: Colors.grey[400]),
+                                  filled: true,
+                                  fillColor: Colors.grey[50],
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: primaryColor)),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+
+                              // Button
+                              SizedBox(
+                                width: double.infinity,
+                                height: 50,
+                                child: ElevatedButton(
+                                  onPressed: isLoading ? null : resetPassword,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: primaryColor,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  child: isLoading
+                                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                      : const Text("GỬI YÊU CẦU", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                    ),
-                  SizedBox(
-                    height: 50,
-                    child: isLoading
-                        ? Center(
-                            child:
-                                CircularProgressIndicator(color: primaryColor))
-                        : ElevatedButton(
-                            onPressed: (_emailSent || isLoading)
-                                ? null
-                                : resetPassword,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryColor,
-                              disabledBackgroundColor:
-                                  primaryColor.withOpacity(0.5),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              elevation: 3,
-                            ),
-                            child: const Text(
-                              "SEND RESET LINK",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
+                      
+                      const SizedBox(height: 24),
+                      TextButton.icon(
+                        onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const Login())),
+                        icon: const Icon(Icons.arrow_back, size: 18),
+                        label: const Text("Quay lại đăng nhập"),
+                        style: TextButton.styleFrom(foregroundColor: textGrey),
+                      )
+                    ],
                   ),
-                  const SizedBox(height: 30),
-                ],
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
+  }
+  
+  Widget _buildBlob(Color color) {
+    return Container(width: 400, height: 400, decoration: BoxDecoration(color: color, shape: BoxShape.circle));
   }
 }
