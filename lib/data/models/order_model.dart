@@ -79,6 +79,7 @@ class OrderModel {
   final int loyaltyPointsUsed;      // Số điểm đã dùng
   final int loyaltyDiscountAmount;  // Số tiền được giảm từ điểm
   // -----------------------------
+  final String? paymentMethod; // <--- THÊM TRƯỜNG NÀY
 
   OrderModel({
     required this.id,
@@ -97,6 +98,7 @@ class OrderModel {
     this.loyaltyPointsUsed = 0,
     this.loyaltyDiscountAmount = 0,
     // -----------------
+    this.paymentMethod,
   });
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
@@ -144,6 +146,7 @@ class OrderModel {
       loyaltyPointsUsed: json['loyaltyPointsUsed'] ?? 0,
       loyaltyDiscountAmount: json['loyaltyDiscountAmount'] ?? 0,
       // --------------------------------
+      paymentMethod: json['paymentMethod'] ?? 'COD',
     );
   }
   

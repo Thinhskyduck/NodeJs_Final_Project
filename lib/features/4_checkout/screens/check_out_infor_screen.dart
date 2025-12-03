@@ -98,7 +98,7 @@ class _CheckoutInfoScreenState extends State<CheckoutInfoScreen> {
   final TextEditingController _couponController = TextEditingController();
   final TextEditingController _loyaltyPointsController = TextEditingController(text: '0');
 
-  final List<String> _paymentMethods = ['Tiền mặt', 'Chuyển khoản', 'Thẻ tín dụng'];
+  final List<String> _paymentMethods = ['Tiền mặt', 'Thanh toán Online (VNPAY)'];
 
   // State Coupon & Points
   int _userLoyaltyPoints = 0;

@@ -7,8 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http; // Nếu cần gọi API /checkout
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert'; // Nếu cần gọi API /checkout
-
+import 'vnpay_payment_screen.dart';
 import 'package:cross_platform_mobile_app_development/layout/header.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 // import '../services/api_service.dart'; // Nếu có service cho API /checkout
@@ -170,105 +171,170 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
     });
 
     try {
-      final String checkoutApiUrl = '${AppConstants.baseUrl}/orders'; // API User
-      final String guestCheckoutUrl = '${AppConstants.baseUrl}/orders/guest'; // API Guest
-      
+      final ApiService apiService = ApiService();
+
+      final String checkoutApiUrl = '${AppConstants.baseUrl}/orders';
+      final String guestCheckoutUrl = '${AppConstants.baseUrl}/orders/guest';
+
       http.Response response;
-      
-      // 1. Lấy mã giảm giá và điểm
+
+      // -----------------------------
+      // 1. Lấy dữ liệu giảm giá & điểm
+      // -----------------------------
       String couponCode = "";
       if (widget.previewOrderData['applied_coupon'] != null) {
         couponCode = widget.previewOrderData['applied_coupon']['code'];
       }
+
       int pointsUsed = widget.previewOrderData['loyalty_points_used'] ?? 0;
 
-      // 2. Logic gọi API
-      if (widget.userId.isNotEmpty) { 
-         // --- USER CHECKOUT ---
-         final prefs = await SharedPreferences.getInstance();
-         final token = prefs.getString(AppConstants.tokenKey);
+      // -----------------------------
+      // 2. Gửi request tạo đơn hàng
+      // -----------------------------
+      if (widget.userId.isNotEmpty) {
+        // ---------- USER CHECKOUT ----------
+        final prefs = await SharedPreferences.getInstance();
+        final token = prefs.getString(AppConstants.tokenKey);
 
-         response = await http.post(
-            Uri.parse(checkoutApiUrl),
-            headers: {
-              'accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
+        response = await http.post(
+          Uri.parse(checkoutApiUrl),
+          headers: {
+            'accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({
+            'shippingAddress': {
+              'addressLine': widget.previewOrderData['shipping_address'],
+              'city': 'Vietnam',
+              'postalCode': '70000',
+              'country': 'Vietnam'
             },
-            body: jsonEncode({
-              'shippingAddress': {
-                'addressLine': widget.previewOrderData['shipping_address'],
-                'city': 'Vietnam', 
-                'postalCode': '70000',
-                'country': 'Vietnam'
-              },
-              'paymentMethod': widget.previewOrderData['payment_method'],
-              'discountCode': couponCode,
-              
-              // [SỬA 1]: Gửi số điểm cụ thể, đổi tên key thành pointsToUse
-              'pointsToUse': pointsUsed, 
-            }),
-         );
+            'paymentMethod': widget.previewOrderData['payment_method'],
+            'discountCode': couponCode,
+
+            // Sửa theo yêu cầu backend
+            'pointsToUse': pointsUsed,
+          }),
+        );
       } else {
-         // --- GUEST CHECKOUT ---
-         List<dynamic> rawItems = widget.previewOrderData['items'];
-         List<Map<String, dynamic>> guestItems = rawItems.map((item) => {
-            "product": item['product_id'],
-            "variant": item['variant_id'],
-            "quantity": item['quantity'],
-            "price": item['price_at_purchase'],
-            "name": item['variant']['name'], 
-            "image": item['variant']['image_url'] 
-         }).toList();
+        // ---------- GUEST CHECKOUT ----------
+        List<dynamic> rawItems = widget.previewOrderData['items'];
+        List<Map<String, dynamic>> guestItems = rawItems.map((item) => {
+              "product": item['product_id'],
+              "variant": item['variant_id'],
+              "quantity": item['quantity'],
+              "price": item['price_at_purchase'],
+              "name": item['variant']['name'],
+              "image": item['variant']['image_url']
+            }).toList();
 
-         response = await http.post(
-            Uri.parse(guestCheckoutUrl),
-            headers: {
-              'accept': 'application/json',
-              'Content-Type': 'application/json',
+        response = await http.post(
+          Uri.parse(guestCheckoutUrl),
+          headers: {
+            'accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'fullName': widget.previewOrderData['recipient_name'],
+            'email': widget.guestEmail,
+            'shippingAddress': {
+              'addressLine': widget.previewOrderData['shipping_address'],
+              'city': 'Vietnam',
+              'postalCode': '70000',
+              'country': 'Vietnam'
             },
-            body: jsonEncode({
-              'fullName': widget.previewOrderData['recipient_name'],
-              'email': widget.guestEmail,
-              'shippingAddress': {
-                'addressLine': widget.previewOrderData['shipping_address'],
-                'city': 'Vietnam', 
-                'postalCode': '70000',
-                'country': 'Vietnam'
-              },
-              'paymentMethod': widget.previewOrderData['payment_method'],
-              'cartItems': guestItems,
-              
-              // [SỬA 2]: Bổ sung gửi mã giảm giá cho Guest (nếu có)
-              'discountCode': couponCode, 
-            }),
-         );
+            'paymentMethod': widget.previewOrderData['payment_method'],
+            'cartItems': guestItems,
+
+            // Bổ sung discount cho guest
+            'discountCode': couponCode,
+          }),
+        );
       }
 
-      if (mounted) {
-        if (response.statusCode == 200 || response.statusCode == 201) {
-          // Xóa giỏ hàng local nếu là guest
-          if (widget.userId.isEmpty) {
-             final prefs = await SharedPreferences.getInstance();
-             await prefs.remove('LOCAL_CART_DATA');
-          }
-          
-          final responseData = jsonDecode(response.body);
-          _showSuccessDialog(responseData); 
+      // -----------------------------
+      // 3. Kiểm tra kết quả tạo đơn
+      // -----------------------------
+      if (!(response.statusCode == 200 || response.statusCode == 201)) {
+        final errorData = jsonDecode(response.body);
+        setState(() {
+          _checkoutErrorMessage = errorData['message'] ?? 'Đặt hàng thất bại';
+        });
+        return;
+      }
 
-        } else {
-          final errorData = jsonDecode(response.body);
+      final responseData = jsonDecode(response.body);
+
+      // -----------------------------
+      // 4. Lấy orderId + tổng tiền
+      // -----------------------------
+      String orderId = "";
+      int totalAmount = 0;
+
+      if (responseData['order'] != null) {
+        orderId = responseData['order']['_id'];
+        totalAmount = responseData['order']['totalPrice'];
+      } else if (responseData['_id'] != null) {
+        orderId = responseData['_id'];
+        totalAmount = responseData['totalPrice'];
+      }
+
+      final paymentMethod =
+          widget.previewOrderData['payment_method'].toString().toUpperCase();
+
+      // -----------------------------
+      // 5. Nếu chọn VNPAY → Điều hướng thanh toán
+      // -----------------------------
+      if (paymentMethod.contains('VNPAY') || paymentMethod.contains('(VNPAY)') || paymentMethod.contains('Online')) {
+        final paymentUrl = await apiService.createPaymentUrl(
+          orderId: orderId,
+          amount: totalAmount,
+        );
+
+        if (paymentUrl == null) {
           setState(() {
-            _checkoutErrorMessage = errorData['message'] ?? 'Đặt hàng thất bại';
+            _checkoutErrorMessage = "Không thể tạo liên kết thanh toán.";
+          });
+          return;
+        }
+
+        if (!mounted) return;
+        
+        // Xóa giỏ hàng local nếu là guest
+        if (widget.userId.isEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('LOCAL_CART_DATA');
+        }
+
+        // --- SỬA ĐỔI CHO WEB ---
+        final Uri uri = Uri.parse(paymentUrl);
+        if (await canLaunchUrl(uri)) {
+          // Mở link ngay tại tab hiện tại. 
+          // Sau khi thanh toán xong, VNPAY sẽ redirect về localhost:3000/order-success
+          await launchUrl(uri, webOnlyWindowName: '_self'); 
+        } else {
+          setState(() {
+            _checkoutErrorMessage = "Không thể mở trang thanh toán.";
           });
         }
+        // Kết thúc hàm ở đây, vì app sẽ reload lại trang khi VNPAY redirect về
+        return;
       }
+
+      // -----------------------------
+      // 6. Nếu COD hoặc không phải VNPAY → Thành công luôn
+      // -----------------------------
+      if (widget.userId.isEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('LOCAL_CART_DATA');
+      }
+
+      _showSuccessDialog(responseData);
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _checkoutErrorMessage = 'Lỗi kết nối: $e';
-        });
-      }
+      setState(() {
+        _checkoutErrorMessage = 'Lỗi kết nối: $e';
+      });
     } finally {
       if (mounted) {
         setState(() {
@@ -277,6 +343,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       }
     }
   }
+
 
   // Hiển thị dialog thành công và thông tin đơn hàng
   void _showSuccessDialog(dynamic responseData) {

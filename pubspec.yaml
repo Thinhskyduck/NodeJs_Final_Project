@@ -44,6 +44,7 @@ dependencies:
   socket_io_client: ^2.0.3+1
   url_strategy: ^0.3.0
   url_launcher: ^6.3.1
+  webview_flutter: ^4.13.0
 
 dev_dependencies:
   flutter_test:
@@ -56,9 +57,6 @@ flutter:
     - assets/img/
     - assets/img/brand/
     - assets/img/category/
-    - assets/img/product_img/
-    - assets/img/product_thumnail/
-    - assets/img/product_variant/
     - assets/images/
     - assets/img/laptop/
     - assets/img/screen/ 

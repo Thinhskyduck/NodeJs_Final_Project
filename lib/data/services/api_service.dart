@@ -615,4 +615,34 @@ class ApiService {
       return false;
     }
   }
+
+  // --- PAYMENT (VNPAY) ---
+  Future<String?> createPaymentUrl({
+    required String orderId,
+    required int amount,
+    String bankCode = "",
+    String language = "vn",
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${AppConstants.baseUrl}/payment/create_payment_url'),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'orderId': orderId,
+          'amount': amount,
+          'bankCode': bankCode,
+          'language': language,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data['paymentUrl']; // Trả về link VNPAY
+      }
+      return null;
+    } catch (e) {
+      print('Create payment url error: $e');
+      return null;
+    }
+  }
 }

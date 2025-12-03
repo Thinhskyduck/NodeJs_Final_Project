@@ -214,6 +214,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   ),
                   child: Column(
                     children: [
+                      // --- THÊM DÒNG NÀY ---
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("Phương thức thanh toán", style: TextStyle(color: Colors.black54)),
+                          Text(
+                            order.paymentMethod?.toUpperCase() ?? "COD", 
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)
+                          ),
+                        ],
+                      ),
+                      const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
+                      // ---------------------
                       _buildPriceRow("Tổng tiền hàng", order.itemsPrice),
                       _buildPriceRow("Phí vận chuyển", order.shippingPrice),
                       

@@ -5,6 +5,7 @@ import 'features/0_authentication/screens/login.dart';
 import 'features/0_authentication/screens/reset_password_confirm.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/constants/app_constants.dart';
+import 'features/4_checkout/screens/order_success_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -50,6 +51,23 @@ class MyApp extends StatelessWidget {
           );
         }
 
+
+        // --- LOGIC 3: XỬ LÝ THANH TOÁN THÀNH CÔNG VNPAY (MỚI) ---
+        // Link: http://localhost:3000/order-success?orderId=xxxx
+        if (uri.path == '/order-success') {
+           final orderId = uri.queryParameters['orderId'] ?? '';
+           return MaterialPageRoute(
+             builder: (_) => OrderSuccessScreen(orderId: orderId),
+           );
+        }
+
+        // --- LOGIC 4: XỬ LÝ THANH TOÁN THẤT BẠI ---
+        if (uri.path == '/order-failed') {
+           // Bạn có thể tạo màn hình Failed riêng hoặc về Home
+           // Ở đây ví dụ cho về Home và hiện thông báo lỗi sau
+           return MaterialPageRoute(builder: (_) => const HomeScreen());
+        }
+        
         // --- CÁC ROUTE CƠ BẢN ---
         if (uri.path == '/login') {
           return MaterialPageRoute(builder: (_) => const Login());
